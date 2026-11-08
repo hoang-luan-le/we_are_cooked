@@ -664,6 +664,72 @@ def test_cohorts_work_even_without_a_scenario():
         assert _create_cohort(h).status_code == 201
 
 
+# ---------- panels ----------
+
+def _logs(h: Harness, **params):
+    return h.client.get(f"/api/incident/{INC}/logs", params=params).json()["lines"]
+
+
+def test_logs_show_guest_failures_until_the_rollback():
+    with Harness() as h:
+        h.ok("answer")
+        h.clock.advance(60)
+        lines = _logs(h)
+        assert len(lines) == 200 and lines == _logs(h)  # deterministic
+        errors = [line for line in lines if line["level"] == "ERROR"]
+        assert errors and all("KeyError: 'tier'" in e["message"] and "guest=true" in e["message"] for e in errors)
+        assert 0.15 < len(errors) / len([x for x in lines if x["service"] == "checkout"]) < 0.5
+        assert any(line["service"] == "search-service" for line in lines)  # the red herring
+        assert all(line["level"] == "ERROR" for line in _logs(h, level="ERROR", limit=20))
+        assert all("tier=gold" in line["message"] for line in _logs(h, q="tier=gold", limit=10))
+        h.ok("rollback")
+        h.clock.advance(60)
+        newest = _logs(h, limit=40)
+        assert newest and not any(line["level"] == "ERROR" for line in newest)
+        assert h.client.get(f"/api/incident/{INC}/logs", params={"limit": 201}).status_code == 422
+
+
+def test_deploys_show_the_diff_and_the_live_version():
+    with Harness() as h:
+        deploys = h.client.get(f"/api/incident/{INC}/deploys").json()
+        assert deploys["live_version"] == SPEC.releases.bad
+        bad = next(r for r in deploys["releases"] if r["version"] == SPEC.releases.bad)
+        assert bad["live"] and bad["diff_source"] == "scenario" and bad["at"] == SPEC.releases.bad_at
+        assert 'customer.profile["tier"]' in bad["files"][0]["patch"]
+        h.ok("answer")
+        h.ok("rollback")
+        assert h.client.get(f"/api/incident/{INC}/deploys").json()["live_version"] == SPEC.releases.good
+        h.set_pr()
+        h.ok("deploy_fix")
+        assert h.client.get(f"/api/incident/{INC}/deploys").json()["live_version"] == SPEC.fix_version
+
+
+def test_runbooks():
+    with Harness() as h:
+        index = h.client.get(f"/api/incident/{INC}/runbooks").json()["runbooks"]
+        assert index and index[0]["name"] in SPEC.runbooks
+        book = h.client.get(f"/api/incident/{INC}/runbooks/{index[0]['name']}").json()
+        assert book["steps"] == list(SPEC.runbooks[index[0]["name"]].steps)
+        assert h.client.get(f"/api/incident/{INC}/runbooks/nope").status_code == 404
+
+
+def test_metrics_history_reaches_back_to_the_bad_release_and_shows_recovery():
+    with Harness() as h:
+        h.ok("answer")
+        h.clock.advance(120)
+        h.ok("rollback")
+        h.clock.advance(60)
+        history = h.client.get(f"/api/incident/{INC}/metrics/history",
+                               params={"window_s": 1800, "step_s": 10}).json()
+    samples = history["samples"]
+    assert samples[0]["error_rate"] == SPEC.metrics.baseline.error_rate  # before 01:47
+    assert max(s["error_rate"] for s in samples) >= SPEC.metrics.at_page.error_rate
+    assert samples[-1]["error_rate"] == SPEC.metrics.baseline.error_rate  # recovered
+    labels = [e["label"] for e in history["events"]]
+    assert labels == [f"bad release {SPEC.releases.bad}", "paged", "rollback"]
+    assert history["events"][0]["sim_time"] == f"{SPEC.releases.bad_at}:00"
+
+
 # ---------- starting incidents and teammates ----------
 
 def _start(h: Harness, teammates: list[str], headers: dict = TEAM, level: str = "practice"):

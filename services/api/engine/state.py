@@ -97,6 +97,7 @@ class IncidentState:
     phase: str = "paged"
     status: str = "broken"
     rollback_at: float | None = None
+    fixed_at: float | None = None
     restart_at: float | None = None
     snoozed_at: float | None = None
     snoozes: int = 0

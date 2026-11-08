@@ -109,7 +109,7 @@ def _no_effect(action: str) -> Callable:
 
 
 def _deploy_fix(state, scenario, actor, now, panel, text):
-    return _record(state, "deploy_fix", status="fixed", phase="fixed")
+    return _record(state, "deploy_fix", status="fixed", phase="fixed", fixed_at=now)
 
 
 HANDLERS: dict[str, Callable] = {

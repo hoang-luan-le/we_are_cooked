@@ -19,7 +19,7 @@ from cohorts import CohortStore
 from config import Settings
 from db import MEMORY, Database, open_database
 from engine.errors import ActionRejected
-from routes import cohorts, debrief, demo, handoff, incidents
+from routes import cohorts, debrief, demo, handoff, incidents, panels
 from routes.deps import Runtime
 from scenario_loader import ScenarioError, load_scenario
 from store import IncidentStore
@@ -96,6 +96,7 @@ def create_app(settings: Settings | None = None, clock: Callable[[], float] = ti
     app.add_exception_handler(ActionRejected, _rejected)
     app.include_router(incidents.router)
     app.include_router(handoff.router)
+    app.include_router(panels.router)
     app.include_router(debrief.router)
     app.include_router(cohorts.router)
     app.include_router(demo.router)

@@ -158,3 +158,25 @@ export interface Cohort { id: string; name: string; join_code: string; created_b
 export interface CreateCohortRequest { name: string }                   // POST /api/cohorts -> 201 Cohort
 export interface JoinCohortRequest { join_code: string }                // POST /api/cohorts/join -> Cohort (case/space-insensitive)
 // GET /api/cohorts/{id} -> Cohort
+
+// ---- panels (GET, no auth; open_panel via /action still unlocks Dana's facts) ----
+// GET /api/incident/{id}/logs?limit=1..200&level=INFO|WARN|ERROR&q=text -> { lines: LogLine[] } (oldest first)
+export interface LogLine { time: string; level: "INFO" | "WARN" | "ERROR"; service: string; message: string }
+// GET /api/incident/{id}/deploys -> DeployHistory
+export interface DeployFile { filename: string; patch: string }          // unified diff hunk(s)
+export interface Release {
+  version: string; at: string; day: string; author: string; title: string;
+  live: boolean;
+  diff_source: "github" | "scenario";      // scenario = offline fallback, same diff
+  files: DeployFile[];
+}
+export interface DeployHistory { live_version: string; releases: Release[] }
+// GET /api/incident/{id}/runbooks -> { runbooks: {name, title}[] };  GET .../runbooks/{name} -> Runbook
+export interface Runbook { name: string; title: string; steps: string[] }
+// GET /api/incident/{id}/metrics/history?window_s=5..3600&step_s=5..300 -> MetricsHistory
+export interface MetricsSample extends Metrics { sim_time: string }     // "HH:MM:SS"
+export interface MetricsHistory {
+  samples: MetricsSample[];                // may start before the page: errors climb from the bad release
+  events: { label: string; sim_time: string }[];
+  baseline: Metrics;
+}
