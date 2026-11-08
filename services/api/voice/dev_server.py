@@ -10,7 +10,7 @@ Also serves fake /api/incident/{id}/facts, so DANA_FACTS=http://localhost:8001 t
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 
-from .config import DANA_FACTS, DANA_MODEL, DEEPGRAM_API_KEY, GEMINI_API_KEY, HERE
+from .config import DANA_FACTS, DANA_MODEL, DEEPGRAM_API_KEY, HERE
 from .facts import _FAKE
 from .relay import router
 
@@ -26,7 +26,7 @@ async def page():
 @app.get("/health")
 async def health():
     return {"ok": True, "model": DANA_MODEL, "facts": DANA_FACTS,
-            "has_deepgram_key": bool(DEEPGRAM_API_KEY), "has_gemini_key": bool(GEMINI_API_KEY)}
+            "has_deepgram_key": bool(DEEPGRAM_API_KEY)}
 
 
 @app.get("/api/incident/{incident_id}/facts")

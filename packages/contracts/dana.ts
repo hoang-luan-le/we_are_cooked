@@ -19,7 +19,7 @@ export function danaUrl(apiWsBase: string, p: {
 
 // server -> browser
 export type DanaServerMsg =
-  | { type: "ready"; call: DanaCall; mode: DanaMode }
+  | { type: "ready"; call: DanaCall; mode: DanaMode; engine: "deepgram" | "scripted" }
   | { type: "caption"; role: "dana" | "you"; text: string }
   | { type: "status"; state: "listening" | "thinking" | "speaking" }
   | { type: "user_started_speaking" }
