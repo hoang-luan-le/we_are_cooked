@@ -100,7 +100,7 @@ def check(pilot: Path) -> int:
 
 # ---------- reset-pilot ----------
 
-def reset_pilot(pilot: Path) -> int:
+def reset_pilot(pilot: Path, fix_branch: bool = True) -> int:
     if not (pilot / ".git").exists():
         raise SystemExit(f"Pilot repo not found at {pilot} (use --pilot)")
     if git(pilot, "status", "--porcelain"):
@@ -122,6 +122,9 @@ def reset_pilot(pilot: Path) -> int:
         say(True, f"Reverted {merge[:7]} and pushed: the bug is back on main")
     else:
         say(True, "main already has the bug")
+    if not fix_branch:
+        say(True, "No ready-made fix branch: the Morning engineer writes the fix in VS Code")
+        return 0
     branch = f"fix/guest-checkout-{datetime.now(timezone.utc):%m%d-%H%M}"
     git(pilot, "checkout", "-q", "-b", branch)
     tests = pilot / "tests" / "test_pricing.py"
@@ -191,12 +194,14 @@ def main() -> int:
     parser.add_argument("command", choices=("check", "reset-pilot", "start", "reset"))
     parser.add_argument("--pilot", type=Path, default=DEFAULT_PILOT, help="local clone of shopnorth-checkout")
     parser.add_argument("--build", action="store_true", help="rebuild the web app before starting")
+    parser.add_argument("--no-fix-branch", action="store_true",
+                        help="reset-pilot: only put the bug back (the learner writes the fix)")
     parser.add_argument("--level", default="explore", choices=("explore", "practice", "challenge"))
     args = parser.parse_args()
     if args.command == "check":
         return check(args.pilot)
     if args.command == "reset-pilot":
-        return reset_pilot(args.pilot)
+        return reset_pilot(args.pilot, fix_branch=not args.no_fix_branch)
     if args.command == "start":
         return start(args.build)
     return reset(args.level)
