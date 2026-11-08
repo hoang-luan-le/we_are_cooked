@@ -34,13 +34,11 @@
 
 .world-panel { position: absolute; background: var(--canvas); overflow: auto; }
 .world-panel[hidden] { display: none; }
-.world-panel[data-layout="side"] { top: 0; right: 0; bottom: 0; width: min(440px, 100%); box-shadow: -8px 0 30px rgb(0 0 0 / .4); }
-.world-panel[data-layout="full"] { inset: 0; animation: world-panel-in 200ms ease-out; }
+.world-panel { inset: 0; animation: world-panel-in 200ms ease-out; }
 @keyframes world-panel-in { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .world-panel[data-layout="full"] { animation: none; } .world-eyelids i { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .world-panel { animation: none; } .world-eyelids i { transition: none; } }
 .world[data-fallback] .world-panel { position: static; overflow: visible; }
 .world-panel-bar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--line); }
-.world-panel[data-layout="side"] .call-layout { padding: 16px; }
 
 .world-still { display: grid; gap: 10px; padding: 16px; max-width: 960px; margin-inline: auto; }
 .world-still img { width: 100%; height: auto; border-radius: var(--radius); }
@@ -54,7 +52,6 @@
 .desk-task ul { margin: 0; padding-left: 20px; }
 
 @media (max-width: 640px) {
-  .world-panel[data-layout="side"] { top: 45%; width: 100%; }
   .world-minimap { width: 120px; height: 110px; }
   .world-topbar strong { display: none; }
 }

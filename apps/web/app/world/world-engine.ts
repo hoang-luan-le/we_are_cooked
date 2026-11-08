@@ -863,9 +863,8 @@ export class WorldEngine {
   }
 
   /** The camera settles on the screen in front of the seated player, then the shared panel opens. */
-  private openMonitor(target: Target) {
-    if (!target.panel || !target.seat) return;
-    const panel = target.panel;
+  private openMonitor(target: Target, panel = target.panel) {
+    if (!panel || !target.seat) return;
     const screen = this.world(target.seat.look);
     const away = new THREE.Vector3(this.x - screen.x, this.y - screen.y, this.z - screen.z).normalize();
     const eye = screen.clone().addScaledVector(away, target.seat.focus);
@@ -874,6 +873,16 @@ export class WorldEngine {
       done: () => { this.mode = "seated"; this.events.onPanel(panel); } };
     this.mode = "moving";
     this.refreshPrompts();
+  }
+
+  /** Starts at the desk and moves into the monitor, so setup appears on the computer. */
+  openOnComputer(panel: PanelId) {
+    const target = this.config.targets.find(item => item.kind === "seat" && item.panel === "incident-board");
+    if (!target?.seat || this.mode === "loading") return;
+    const seat = this.world(`${target.seat.root}_seat_anchor`);
+    const pose = this.facing(seat.x, seat.z, target, seat.y);
+    Object.assign(this, { x: seat.x, y: seat.y, z: seat.z, yaw: pose.yaw, pitch: pose.pitch, lookYaw: pose.yaw, lookPitch: pose.pitch });
+    this.openMonitor(target, panel);
   }
 
   /** The clear point beside a chair that is nearest the way the player came in. */

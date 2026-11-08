@@ -45,7 +45,7 @@ export function NightWorld({ entryId, run = {}, setup, forceFallback }: {
   const presentation = fallback ? undefined : renderCall;
 
   return (
-    <WorldShell config={bedroom} availability={availability} alwaysShowPanel={Boolean(setup) || stage === undefined} forceFallback={forceFallback} objective={objective} displays={displays}
+    <WorldShell config={bedroom} availability={availability} setupOnComputer={Boolean(setup)} forceFallback={forceFallback} objective={objective} displays={displays}
       phone={fallback ? undefined : phone} skipWake={noIntro} onPhoneSlot={setSlot} onPhoneHeld={setHeld} onFallbackChange={setFallback}>
       {setup ?? (entryId !== undefined
         ? <FixtureNight key={entryId} entryId={entryId} onStage={setStage} renderCall={presentation} />

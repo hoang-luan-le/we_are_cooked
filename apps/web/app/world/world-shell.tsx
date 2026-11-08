@@ -10,15 +10,15 @@ export type Objective = { text: string; at?: readonly [number, number] };
 type Pose = { u: number; v: number; heading: number };
 
 const panelTitles: Record<PanelId, string> = {
-  "incident-board": "Incident board", briefing: "Dana's briefing",
+  setup: "Set up your shift", "incident-board": "Incident board", briefing: "Dana's briefing",
   "workstation-1": "Workstation 1", "workstation-2": "Workstation 2",
 };
 
-export function WorldShell({ config, availability, alwaysShowPanel, forceFallback, objective, displays, phone, skipWake, onPhoneSlot, onPhoneHeld, meeting, onPanelChange, onDoor, onFallbackChange, children }: {
+export function WorldShell({ config, availability, setupOnComputer, forceFallback, objective, displays, phone, skipWake, onPhoneSlot, onPhoneHeld, meeting, onPanelChange, onDoor, onFallbackChange, children }: {
   config: SceneConfig;
   availability: Availability;
-  /** The 2D flow is the active step, for example the incoming call. */
-  alwaysShowPanel: boolean;
+  /** The children are shift setup, shown on the computer from the start. */
+  setupOnComputer?: boolean;
   forceFallback?: boolean;
   objective?: Objective;
   /** Screens painted from app state, keyed by GLB mesh name. */
@@ -52,6 +52,8 @@ export function WorldShell({ config, availability, alwaysShowPanel, forceFallbac
   const slotRef = useRef<HTMLDivElement>(null);
   const skipRef = useRef(skipWake);
   skipRef.current = skipWake;
+  const setupRef = useRef(setupOnComputer);
+  setupRef.current = setupOnComputer;
   const heldHandler = useRef(onPhoneHeld);
   heldHandler.current = onPhoneHeld;
   const latest = useRef(availability);
@@ -90,6 +92,7 @@ export function WorldShell({ config, availability, alwaysShowPanel, forceFallbac
             if (!panelRef.current?.contains(document.activeElement)) element.focus({ preventScroll: true });
             engine?.setAvailability(latest.current.ids, latest.current.walk, latest.current.ringing);
             for (const [mesh, content] of Object.entries(latestDisplays.current ?? {})) engine?.setDisplay(mesh, content);
+            if (setupRef.current) engine?.openOnComputer("setup");
           },
           onError: setError,
           onPrompts(next, nextMode) { setPrompts(next); setMode(nextMode); },
@@ -153,11 +156,11 @@ export function WorldShell({ config, availability, alwaysShowPanel, forceFallbac
 
   useEffect(() => {
     if (!panel) return;
-    panelRef.current?.querySelector<HTMLElement>(".world-panel-close")?.focus({ preventScroll: true });
+    panelRef.current?.querySelector<HTMLElement>(panel === "setup" ? "input, button" : ".world-panel-close")?.focus({ preventScroll: true });
   }, [panel]);
 
-  const showPanel = fallback || alwaysShowPanel || Boolean(panel);
-  const full = fallback || Boolean(panel);
+  // 2D only ever appears on a device: the handset, or the computer filling the view.
+  const showPanel = fallback || Boolean(panel);
   const seated = mode === "seated";
   const movable = mode === "walk" || seated;
 
@@ -222,9 +225,9 @@ export function WorldShell({ config, availability, alwaysShowPanel, forceFallbac
         </>
       ) : null}
 
-      <div ref={panelRef} className="world-panel" data-layout={full ? "full" : "side"} hidden={!showPanel}
-        onKeyDown={event => { if (panel && event.key === "Escape" && !(event.target as HTMLElement).matches("input,textarea,select")) closePanel(); }}>
-        {panel && !fallback ? (
+      <div ref={panelRef} className="world-panel" hidden={!showPanel}
+        onKeyDown={event => { if (panel && panel !== "setup" && event.key === "Escape" && !(event.target as HTMLElement).matches("input,textarea,select")) closePanel(); }}>
+        {panel && panel !== "setup" && !fallback ? (
           <div className="world-panel-bar">
             <strong>{panelTitles[panel]}</strong>
             <button className="world-panel-close" onClick={closePanel}>Back to the room</button>

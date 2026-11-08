@@ -77,7 +77,7 @@ export function MorningWorld({ team, forceFallback, fixture, handoffs }: {
   const showDesk = Boolean(desk) || fallback;
 
   return (
-    <WorldShell config={office} availability={every} alwaysShowPanel={false} forceFallback={forceFallback} objective={objective}
+    <WorldShell config={office} availability={every} forceFallback={forceFallback} objective={objective}
       displays={displays} meeting={meetingState} onPanelChange={setPanel} onDoor={onDoor} onFallbackChange={setFallback}>
       <div hidden={!showMeeting}>
         {handoffs ?? (beat ? <MeetingPanel beats={beats} index={progress.index} source={source} complete={progress.complete}

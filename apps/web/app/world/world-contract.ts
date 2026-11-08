@@ -1,7 +1,7 @@
 // Names in this file are node names in the exported GLBs. Coordinates are glTF: +Y up, office inbound is +Z.
 export type SceneId = "bedroom" | "office";
 export type Palette = { top: string; legs: string; hair: string; skin: string; shoes: string };
-export type PanelId = "incident-board" | "briefing" | "workstation-1" | "workstation-2";
+export type PanelId = "setup" | "incident-board" | "briefing" | "workstation-1" | "workstation-2";
 
 export type PropAction =
   | { type: "light"; light: string; glow: string; on: string; off: string }
