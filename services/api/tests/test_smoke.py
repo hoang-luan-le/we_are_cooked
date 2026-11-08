@@ -8,6 +8,7 @@ from __future__ import annotations
 import itertools
 from contextlib import closing
 import json
+import os
 import sqlite3
 import sys
 import tempfile
@@ -1327,6 +1328,23 @@ def test_database_url_choices_fall_back_to_sqlite():
             assert h.client.get("/health").json()["database"]["kind"] == "sqlite"
     finally:
         Path(path).unlink(missing_ok=True)
+
+
+def test_a_comment_in_env_is_not_a_value():
+    """`NAME=   # note` must not turn on Auth0 or point paths at the note."""
+    names = ("AUTH0_DOMAIN", "SCENARIO_PATH", "CORS_ORIGINS")
+    saved = {n: os.environ.get(n) for n in names}
+    try:
+        for name in names:
+            os.environ[name] = "# empty = something"
+        settings = Settings.from_env()
+        assert settings.demo_mode and settings.scenario_path == DEFAULT_SCENARIO_PATH and settings.cors_origins == ()
+    finally:
+        for name, value in saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
 
 
 # ---------- demo reset and voice mount ----------

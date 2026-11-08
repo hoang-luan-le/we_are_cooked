@@ -16,6 +16,8 @@ from typing import Any, Callable
 
 import httpx
 
+import tls
+
 logger = logging.getLogger("incident_lab.github")
 API = "https://api.github.com"
 CACHE_TTL_S = 15.0
@@ -108,7 +110,8 @@ class GitHubClient:
                    "User-Agent": "incident-lab"}
         if token:
             headers["Authorization"] = f"Bearer {token}"
-        self._http = httpx.Client(base_url=API, headers=headers, timeout=TIMEOUT_S, transport=transport)
+        self._http = httpx.Client(base_url=API, headers=headers, timeout=TIMEOUT_S, transport=transport,
+                                  verify=tls.verify())
         self.allowlist = tuple(repo.lower() for repo in allowlist)
         self.mentors = tuple(m.lower() for m in mentors)
         self._clock = clock
