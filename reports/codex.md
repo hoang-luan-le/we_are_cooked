@@ -1,3 +1,40 @@
+STATUS: READY_FOR_REVIEW
+COMMAND_ID: 05-RESUME-01
+
+# Phase 05 Team Resume during entry requests
+
+Base [`a4073bb`](https://github.com/thanhtungnguyen-dev/we_are_cooked/commit/a4073bba497736fa82db457bb0def7deb7426c92). The local Phase 05 QA fix is ready for review. The [TeamEntry component](../apps/web/app/start/team-entry.tsx) and its [existing browser suite](../apps/web/tests/team-entry.spec.ts) cover the full change. No new packages or assets were needed.
+
+## Reproduction and fix
+
+Save a valid team incident and open `/start`. Hold the saved-incident GET, then submit a valid Join or a Start that will fail. Deliver the GET while the submission is in flight. Previously the client ignored the response and Resume stayed hidden until a reload. The new cases reproduced both orderings on the baseline before the fix.
+
+The effect that loads the saved incident has its own abort controller. Join changes cohort membership, so the GET completes independently. Failed Start preserves the earlier incident. After successful Start returns a replacement ID, the submit handler aborts the old lookup, clears its notice, and uses the new ID. The existing local-storage fallback still offers a link if saving fails.
+
+## React and Next.js
+
+`useEffect` starts validation when the per-member storage key changes. Its cleanup aborts the request on dependency change or unmount. A `useRef` keeps the lookup controller accessible to the Start handler without causing a render. The `useState` values drive the visible link and notices. Existing Next.js handlers forward reads and submissions to FastAPI, which decides incident access. A validated link is a browser convenience and access is checked again when the incident opens.
+
+Revalidating after every Join or Start failure would also restore the link. That approach adds another request and leaves Resume unavailable while an unrelated submission is pending. Letting the existing read finish reuses its result and gives a confirmed Start a single point to invalidate it.
+
+## Data structures and request ordering
+
+The fix uses one controller reference for the lookup, with O(1) extra state and O(1) work to cancel it. It keeps the existing per-member local-storage ID. For example, if incident A is being validated when Start creates B, a pending result for A is dropped and B becomes the visible link. This cancellation governs the local read. Start retries after an unconfirmed write still depend on a backend idempotency contract.
+
+## Verification
+
+- Production build, typecheck, and production opt-in checks passed.
+- 22 Chromium cases passed, including three new tests for Join, failed Start, and successful Start with blocked storage. The two original bug cases failed on the pre-fix build.
+- 84 backend smoke checks and 9 offline Dana voice checks passed with local SQLite on the current backend.
+- A 25.7-second automated rehearsal used four Chromium contexts on one fresh incident. It covered landing, team entry, denied mic, logs, rollback, handoff, Explore, PR deploy, debrief, private evidence, and mutual opt-in. The GitHub response was a fixture, and Dana used the scripted relay.
+- Stage sign-off still needs authenticated accounts, the pilot PR, live GitHub and Deepgram with a physical mic, and backend role, reviewer identity, and revision contracts. Live Tiger Data was outside this local rehearsal.
+
+**Explain it back.** Why can Join and the saved-incident GET finish in either order, while a confirmed Start supersedes the GET?
+
+**Quick verification.** Start the team API as described in the [web README](../apps/web/README.md), then run `NIGHT_TEST_TEAM_ENTRY=1 NIGHT_TEST_API_ORIGIN=http://127.0.0.1:8000 npm run test:browser -- tests/team-entry.spec.ts` from `apps/web`. In the failed Start case, observe that the old ID remains in storage and the link stays available.
+
+---
+
 STATUS: BLOCKED
 COMMAND_ID: 04-MORNING-EVIDENCE-01
 
