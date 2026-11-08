@@ -7,16 +7,17 @@ import { useMorningResource, useMorningWrite } from "./use-morning-api";
 export function IncidentCheck({ incident, night = false, fixed = false, unavailable = false }: { incident: string; night?: boolean; fixed?: boolean; unavailable?: boolean }) {
   const { data, status, reload } = useMorningResource<CheckView>(incident, "checks");
   const { busy, submit } = useMorningWrite(incident);
-  const [error, setError] = useState("");
-  const disabled = busy || unavailable || status === undefined;
+  const [unconfirmed, setUnconfirmed] = useState<"before" | "after">();
+  const disabled = busy || unavailable || status !== 200;
   const stage = data && !data.before && !fixed ? "before" : !night && fixed && data?.before && !data.after ? "after" : undefined;
 
   return (
     <section className="panel phase-panel" aria-labelledby="check-title">
       <h2 id="check-title">{night ? "Before the incident" : "Before and after check"}</h2>
       {status === undefined && !data ? <p role="status">Loading the check…</p> : null}
-      {status !== undefined && !data ? <div className="entry-section">
-        <p role="alert">The check is unavailable.</p><button onClick={reload}>Retry check</button>
+      {status && status >= 400 ? <div className="entry-section">
+        <p role="alert">{data ? "The check could not be refreshed. Showing the last saved view." : "The check is unavailable."}</p>
+        <button onClick={reload}>Retry check</button>
       </div> : null}
       {data && fixed && !data.before ? <p>There’s no baseline answer for this member on this incident.</p> : null}
       {data?.before && !data.after ? <p>Baseline saved. Scores appear after you answer again following the fix.</p> : null}
@@ -33,10 +34,12 @@ export function IncidentCheck({ incident, night = false, fixed = false, unavaila
         const fields = new FormData(event.currentTarget);
         const choice = fields.get("choice");
         if (typeof choice !== "string") return;
-        setError("");
+        setUnconfirmed(undefined);
         const result = await submit({ operation: "check", stage, choice, explanation: String(fields.get("explanation") ?? "") });
-        if (result?.ok) reload();
-        else if (result) setError("The API did not confirm your answer. Refresh the check before trying again.");
+        if (result) {
+          if (!result.ok) setUnconfirmed(stage);
+          reload();
+        }
       }}>
         <fieldset className="entry-levels" disabled={disabled}>
           <legend>{data.question}</legend>
@@ -46,7 +49,7 @@ export function IncidentCheck({ incident, night = false, fixed = false, unavaila
         </fieldset>
         <label>Reasoning (optional)<textarea name="explanation" rows={2} maxLength={500} readOnly={busy} /></label>
         <button disabled={disabled}>{stage === "before" ? "Save baseline answer" : "Save follow-up answer"}</button>
-        {error ? <p role="alert" className="notice">{error}</p> : null}
+        {unconfirmed === stage && status === 200 ? <p role="alert" className="notice">Your answer has not been confirmed. Check your selection and try again.</p> : null}
       </form> : null}
     </section>
   );

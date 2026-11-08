@@ -23,6 +23,9 @@ pulls = {
     "16": FakeGitHub(created=created, number=16, merged=False, reviews=[
         {"user": {"login": "duy-gh"}, "state": "APPROVED", "body": "This is a review from the author."},
     ]),
+    "18": FakeGitHub(created=created, number=18, reviews=[
+        {"user": {"login": "duy-gh"}, "state": "APPROVED", "body": "This is a review from the author."},
+    ]),
 }
 
 

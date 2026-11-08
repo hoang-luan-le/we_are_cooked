@@ -21,6 +21,7 @@ export function TeamEntry({ user, level }: { user: string; level: Level }) {
   const [resumeNotice, setResumeNotice] = useState("");
   const [rosterRefresh, setRosterRefresh] = useState<{ id: string }>();
   const [saveError, setSaveError] = useState(false);
+  const resumeLookup = useRef<AbortController>(null);
   const rosterLookup = useRef<AbortController>(null);
   const submission = useRef<AbortController>(null);
 
@@ -35,14 +36,15 @@ export function TeamEntry({ user, level }: { user: string; level: Level }) {
     if (!isTeamIncidentId(savedIncident)) return;
     const id = savedIncident;
     const controller = new AbortController();
+    resumeLookup.current = controller;
     function showUnverifiedLink() {
-      if (controller.signal.aborted || submission.current) return;
+      if (controller.signal.aborted) return;
       setIncidentId(current => current ?? id);
       setResumeNotice("The saved incident could not be checked. You can still try its link.");
     }
     void fetch(`/api/night?incident=${id}`, { signal: controller.signal, cache: "no-store" })
       .then(response => {
-        if (controller.signal.aborted || submission.current) return;
+        if (controller.signal.aborted) return;
         if (response.ok) {
           setIncidentId(current => current ?? id);
         } else if (response.status === 404) {
@@ -127,6 +129,8 @@ export function TeamEntry({ user, level }: { user: string; level: Level }) {
         remember(cohortKey, roster.id);
       } else {
         const { id } = await response.json();
+        // A confirmed Start replaces the saved incident. Join leaves it valid.
+        resumeLookup.current?.abort();
         setIncidentId(id);
         setResumeNotice("");
         if (remember(incidentKey, id)) {

@@ -25,7 +25,7 @@ test("rates the handoff, verifies and deploys the PR, debriefs, and connects by 
   }
   await expect.poll(async () => (await state()).phase, { timeout: 15_000 }).toBe("stabilized");
 
-  const otherContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const otherContext = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
   try {
     const other = await otherContext.newPage();
     const morningPath = `/morning?incident=${id}`;
@@ -88,16 +88,46 @@ test("rates the handoff, verifies and deploys the PR, debriefs, and connects by 
     await expect(other.getByRole("heading", { name: "Last verified PR #12" })).toBeVisible();
     await expect(other.getByText("Substantive review recorded", { exact: false })).toBeVisible();
     await expect(other.getByRole("link", { name: "Open verified PR on GitHub" })).toHaveAttribute("href", pilot + "12");
-    await other.getByRole("button", { name: "Deploy fix", exact: true }).click();
+    const deploy = other.getByRole("button", { name: "Deploy fix", exact: true });
+    await deploy.focus();
+    await deploy.press("Enter");
     await expect(other.getByRole("dialog")).toContainText("PR #12");
-    await other.getByRole("button", { name: "Confirm deploy" }).click();
+    const confirm = other.getByRole("button", { name: "Confirm deploy" });
+    let changedHead = true;
+    await other.route(`**/api/night?incident=${id}`, async route => {
+      if (!changedHead || route.request().method() !== "GET") return route.continue();
+      const response = await route.fetch();
+      const incident: IncidentState = await response.json();
+      await route.fulfill({ response, json: { ...incident, pr: { ...incident.pr, head_sha: "new-head" } } });
+    });
+    await expect(confirm).toBeDisabled();
+    await expect(other.getByRole("dialog")).toContainText("PR changed");
+    await other.keyboard.press("Escape");
+    await expect(deploy).toBeFocused();
+    expect((await state()).status).toBe("rolled_back");
+    changedHead = false;
+    await expect(other.getByText("phase4-12", { exact: true })).toBeVisible();
+    await deploy.press("Enter");
+    await confirm.click();
     await expect(page.getByText("Fix deployed · Discounts on")).toBeVisible();
     expect((await state()).allowed_actions).not.toContain("deploy_fix");
     expect((await state()).status).toBe("fixed");
 
+    let checkWrites = 0;
+    let connectionWrites = 0;
+    await page.route(`**/api/morning?incident=${id}`, async route => {
+      const operation = route.request().postDataJSON()?.operation;
+      if (operation === "check") checkWrites++;
+      else if (operation === "connect") connectionWrites++;
+      else return route.continue();
+      const accepted = await route.fetch();
+      expect(accepted.ok()).toBe(true);
+      await route.abort("failed");
+    });
     await page.getByRole("radio", { name: /Roll back the release/ }).check();
     await page.getByRole("button", { name: "Save follow-up answer" }).click();
     await expect(page.getByText("After score", { exact: true })).toBeVisible();
+    expect(checkWrites).toBe(1);
     await page.getByRole("button", { name: "Debrief with Dana by text" }).click();
     await expect(page.getByRole("log", { name: "Dana captions" })).toContainText("What would you tell our customers");
     await page.getByRole("textbox", { name: "Message Dana" }).fill(
@@ -105,17 +135,72 @@ test("rates the handoff, verifies and deploys the PR, debriefs, and connects by 
     );
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(page.getByRole("heading", { name: /Final server rubric/ })).toBeVisible();
-    await expect(page.getByRole("region", { name: "Private incident evidence" })).toContainText("phase4-12");
+    const evidence = page.getByRole("region", { name: "Private incident evidence" });
+    await expect(evidence).toContainText("phase4-12");
+    await expect(evidence).toContainText("Recorded for demo-a");
+    await expect(other.getByRole("region", { name: "Private incident evidence" })).toContainText("Recorded for demo-b");
 
-    await page.getByRole("button", { name: "Request connection with demo-b" }).click();
-    await expect(page.getByText("Your private request was saved.", { exact: false })).toBeVisible();
+    const requestConnection = page.getByRole("button", { name: "Request connection with demo-b" });
+    await requestConnection.click();
+    await expect(requestConnection).toHaveCount(0);
+    expect(connectionWrites).toBe(1);
     await expect(page.getByText("Mutual connection", { exact: true })).toHaveCount(0);
-    await other.getByRole("button", { name: "Request connection with demo-a" }).click();
+    await other.getByRole("button", { name: "Request connection with demo-a" }).tap();
     await expect(other.getByText("Mutual connection", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Refresh connections" }).click();
     await expect(page.getByText("Mutual connection", { exact: true })).toBeVisible();
+    const network = page.getByRole("region", { name: "Work together again" });
+    await expect(network).toContainText("Explore · debriefed");
+    await expect(network.getByRole("link", { name: "Open shared PR on GitHub" })).toHaveAttribute("href", pilot + "12");
     expect(await other.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+
+    let evidenceStatus = 503;
+    await page.route(`**/api/morning?incident=${id}&resource=evidence`, route => route.fulfill({ status: evidenceStatus }));
+    const refreshEvidence = evidence.getByRole("button", { name: "Refresh private evidence" });
+    await refreshEvidence.focus();
+    await refreshEvidence.press("Enter");
+    await expect(evidence.getByRole("alert")).toContainText("Showing the last loaded record");
+    await expect(evidence).toContainText("Recorded for demo-a");
+    await expect(refreshEvidence).toBeFocused();
+
+    evidenceStatus = 403;
+    await refreshEvidence.press("Enter");
+    await expect(evidence.getByRole("alert")).toContainText("The evidence record is unavailable");
+    await expect(evidence.getByText(/Recorded for/)).toHaveCount(0);
+    for (const width of [320, 1440]) {
+      await other.setViewportSize({ width, height: 844 });
+      expect(await other.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    }
   } finally {
     await otherContext.close();
   }
+});
+
+test("keeps Deploy unavailable for a merged green PR with only self-review", async ({ page, request }) => {
+  test.skip(!api || process.env.NIGHT_TEST_MORNING !== "1", "Run the local Morning API fixture.");
+  const headers = { "X-Demo-User": "demo-a" };
+  const created = await request.post(`${api}/api/incident/start`, { headers, data: { level: "explore" } });
+  expect(created.status()).toBe(201);
+  const { incident_id: id }: IncidentState = await created.json();
+  const incident = `${api}/api/incident/${id}`;
+  for (const action of ["answer", "rollback"]) {
+    const result = await request.post(`${incident}/action`, { headers, data: { action, idempotency_key: action } });
+    expect(result.ok()).toBe(true);
+  }
+  await expect.poll(async () => (await (await request.get(incident)).json()).phase, { timeout: 15_000 }).toBe("stabilized");
+  const handoff = await request.post(`${incident}/handoff`, { headers, data: {
+    what_happened: "Guest checkout failed.", current_state: "Recovered after rollback.",
+    tried: "Rolled back the release.", risks: "Add the missing-tier regression test.",
+  } });
+  expect(handoff.ok()).toBe(true);
+  await page.goto(`/morning?incident=${id}`);
+  await page.getByRole("textbox", { name: "GitHub pull request" }).fill(pilot + "18");
+  await page.getByRole("button", { name: "Verify pull request" }).click();
+  const review = page.getByRole("region", { name: "Verify the checkout fix" });
+  await expect(review.getByText("Passing", { exact: true })).toBeVisible();
+  await expect(review.getByText("Merged", { exact: true })).toBeVisible();
+  await expect(review.getByText(/0 non-author/)).toBeVisible();
+  expect((await (await request.get(incident)).json()).allowed_actions).toContain("deploy_fix");
+  await expect(review.getByRole("button", { name: "Deploy fix", exact: true })).toHaveCount(0);
+  await expect(review.getByText(/independent review is required/)).toBeVisible();
 });
