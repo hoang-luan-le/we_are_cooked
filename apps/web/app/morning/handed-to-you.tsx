@@ -68,6 +68,11 @@ export async function HandedToYou({ config, base }: { config: Config; base: "/mo
                 <Link className="button primary" href={`${base}?incident=${encodeURIComponent(row.incident_id)}`}>
                   Open {place}
                 </Link>
+                {base === "/morning" ? (
+                  <Link className="button" href={`/morning/3d?incident=${encodeURIComponent(row.incident_id)}`}>
+                    Open in the 3D office
+                  </Link>
+                ) : null}
               </li>
             ))}
           </ul>

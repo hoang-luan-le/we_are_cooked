@@ -10,6 +10,7 @@ import { fixtureCohort, type FixtureEntry, levels, updateFixtureEntry } from "./
 import { IncidentBoard } from "./incident-board";
 import { NightHandoff } from "./night-handoff";
 import { TeamEvidence } from "./team-evidence";
+import { ViewSwitch } from "../world/view-switch";
 import { type NightAction, useNightApi } from "./use-night-api";
 
 type SupportCall = Exclude<DanaCall, "briefing">;
@@ -163,6 +164,7 @@ export function NightRun({ apiUser, relayBase, entry, incidentId, onStage }: { a
       <header className="app-header">
         <Link href={entry || incidentId ? "/start" : "/"}>Incident Lab</Link>
         <span className="badge fixture">{apiUser ? "Local demo API" : "Development fixture"}</span>
+        <ViewSwitch shift="night" incidentId={incidentId} />
       </header>
       <main className={visibleStage === "board" ? "workspace" : "call-layout"}>
         {entry ? (

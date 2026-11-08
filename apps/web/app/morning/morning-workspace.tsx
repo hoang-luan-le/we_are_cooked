@@ -7,6 +7,7 @@ import { IncidentCheck } from "./incident-check";
 import { Connections, MorningDebrief, PrivateEvidence } from "./morning-after";
 import { HandoffReview, MorningReview } from "./morning-review";
 import type { Pilot } from "./pilot";
+import { ViewSwitch } from "../world/view-switch";
 
 export function MorningWorkspace({ incidentId, user, relayBase, rehearsalGitHub, pilot }: {
   incidentId: string; user: string; relayBase: string; rehearsalGitHub: boolean; pilot?: Pilot;
@@ -20,6 +21,7 @@ export function MorningWorkspace({ incidentId, user, relayBase, rehearsalGitHub,
     <>
       <header className="app-header">
         <Link href="/start">Incident Lab</Link><span className="badge fixture">Local team API</span>
+        <ViewSwitch shift="morning" incidentId={incidentId} />
       </header>
       <main className="workspace">
         <section className="board-heading">
