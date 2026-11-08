@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from auth import Actor, require_member
@@ -20,6 +20,9 @@ class ResetRequest(BaseModel):
 
 
 @router.post("/reset")
-def reset_demo(body: ResetRequest, actor: Actor = Depends(require_member), rt: Runtime = Depends(get_runtime)) -> dict:
-    state, now = rt.store.reset(rt.scenario.spec.incident_id, body.level)
+def reset_demo(
+    body: ResetRequest, request: Request, actor: Actor = Depends(require_member), rt: Runtime = Depends(get_runtime),
+) -> dict:
+    team = request.app.state.settings.demo_team
+    state, now = rt.store.create(rt.scenario.spec.incident_id, body.level, team)
     return state_view(state, rt.scenario, now)

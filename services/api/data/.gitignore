@@ -1,0 +1,3 @@
+# Local SQLite database and other runtime data. Never commit.
+*
+!.gitignore

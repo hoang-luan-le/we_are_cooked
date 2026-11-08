@@ -8,10 +8,10 @@ from __future__ import annotations
 from scenario_loader import Scenario
 
 from .actions import allowed_actions
-from .metrics import baseline_metrics, current_metrics, sim_clock
+from .metrics import baseline_metrics, current_metrics, is_ringing, sim_clock
 from .progress import found_steps, is_nudging, next_hint, stakeholder_message
 from .rubric import facts_rubric
-from .state import IncidentState, Note
+from .state import HANDOFF_PARTS, IncidentState, Note
 
 
 def _clock(state: IncidentState, scenario: Scenario, moment: float) -> str:
@@ -40,12 +40,33 @@ def _pr(state: IncidentState) -> dict | None:
     }
 
 
+def handoff_view(state: IncidentState, scenario: Scenario) -> dict | None:
+    handoff = state.handoff
+    if handoff is None:
+        return None
+    rating = handoff.rating
+    return {
+        "by": handoff.by,
+        "night_pair": list(handoff.night_pair),
+        "morning_pair": list(handoff.morning_pair),
+        "sim_clock": _clock(state, scenario, handoff.at),
+        **{part: getattr(handoff, part) for part in HANDOFF_PARTS},
+        "rating": None if rating is None else {
+            "by": rating.by,
+            "score": rating.score,
+            "note": rating.note,
+            "sim_clock": _clock(state, scenario, rating.at),
+        },
+    }
+
+
 def state_view(state: IncidentState, scenario: Scenario, now: float) -> dict:
     return {
         "incident_id": state.incident_id,
         "level": state.level,
         "phase": state.phase,
         "status": state.status,
+        "ringing": is_ringing(state, scenario.spec.metrics, now),
         "sim_clock": _clock(state, scenario, now),
         "metrics": _impact(state, scenario, now),
         "loyalty_discounts": state.loyalty_discounts,
@@ -54,11 +75,12 @@ def state_view(state: IncidentState, scenario: Scenario, now: float) -> dict:
         "status_updates": _notes(state, scenario, state.status_updates),
         "actions_taken": list(state.actions_taken),
         "allowed_actions": list(allowed_actions(state)),
+        "teammates": list(state.all_teammates),
         "hint_calls": state.hint_calls,
         "nudge": is_nudging(state, scenario, now),
         "stakeholder_message": stakeholder_message(state, scenario, now),
         "pr": _pr(state),
-        "handoff": None,
+        "handoff": handoff_view(state, scenario),
         "rubric": facts_rubric(state, scenario),
     }
 
@@ -83,6 +105,6 @@ def facts_view(state: IncidentState, scenario: Scenario, now: float) -> dict:
         "nudge": is_nudging(state, scenario, now),
         "stakeholder_message": stakeholder_message(state, scenario, now),
         "status": state.status,
-        "handoff": None,
+        "handoff": handoff_view(state, scenario),
         "rubric": facts_rubric(state, scenario),
     }

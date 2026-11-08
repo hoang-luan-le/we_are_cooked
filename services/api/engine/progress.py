@@ -4,7 +4,7 @@ from __future__ import annotations
 from scenario_loader import Scenario
 from scenario_models import LadderStep
 
-from .state import QUIET_PHASES, IncidentState
+from .state import IncidentState
 
 
 def mentions_any(texts: tuple[str, ...], keywords: tuple[str, ...]) -> bool:
@@ -38,7 +38,11 @@ def next_hint(state: IncidentState, scenario: Scenario) -> dict:
 
 
 def is_nudging(state: IncidentState, scenario: Scenario, now: float) -> bool:
-    if state.phase in QUIET_PHASES:
+    """Dana chases an update after update_every_s of silence while checkout is broken.
+
+    Not while the phone is still ringing (nobody has picked up yet), and not after the rollback.
+    """
+    if state.phase == "paged" or state.status != "broken":
         return False
     return now - state.last_contact_at >= scenario.spec.stakeholders.update_every_s
 

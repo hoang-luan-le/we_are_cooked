@@ -20,12 +20,18 @@ class RestartDip(Metrics):
     duration_s: float = Field(gt=0)
 
 
+class SnoozeSpec(_Frozen):
+    ring_again_s: float = Field(gt=0)
+    error_rate_penalty: float = Field(ge=0)   # added per snooze while broken: errors climb
+
+
 class MetricsSpec(_Frozen):
     baseline: Metrics
     at_page: Metrics
     broken: Metrics
     ramp_s: float = Field(gt=0)
     recovery_s: float = Field(gt=0)
+    snooze: SnoozeSpec
     restart_dip: RestartDip
 
 
