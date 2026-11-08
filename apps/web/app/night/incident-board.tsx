@@ -135,9 +135,9 @@ export function IncidentBoard({ heading, snapshot, pending, finalCaption, onActi
   const recovered = incident ? !recovering && incident.status !== "broken" : step === RECOVERY.length;
   const status = recovering ? "Recovering" : recovered ? "Recovered" : "Degraded";
   const canRollback = incident ? incident.allowed_actions.includes("rollback") && !pending : step === null;
-  const discounts = incident ? incident.loyalty_discounts === "on" : !recovered;
+  const discounts = incident ? incident.loyalty_discounts === "on" : step === null;
   const activeVersion = incident?.status === "fixed" ? "Fix deployed" :
-    (incident?.status === "rolled_back" || recovered) ? rollbackDeploy.version : currentDeploy.version;
+    (incident?.status === "rolled_back" || recovering || recovered) ? rollbackDeploy.version : currentDeploy.version;
   const samples = snapshot?.samples ?? [...HISTORY, ...RECOVERY.slice(0, step ?? 0)];
   const latest = samples[samples.length - 1];
   const canOpenPanel = !pending && incident?.allowed_actions.includes("open_panel");

@@ -70,13 +70,16 @@ export function useDanaBriefing(resumeFixture = false) {
     return true;
   }
 
-  function useFixture() {
+  function useFixture(preserveCaptions = false) {
     close();
     setMode("fixture");
     setState("listening");
     setEngine(undefined);
     setNotice("");
-    setCaptions([{ role: "dana", text: BRIEFING }]);
+    setCaptions(previous => [
+      ...(preserveCaptions ? previous : []),
+      { role: "dana", text: BRIEFING },
+    ]);
   }
 
   return {
@@ -84,6 +87,7 @@ export function useDanaBriefing(resumeFixture = false) {
     close, sendText, startRelay, useFixture,
     isDraining: () => connection.current?.isDraining() ?? false,
     resumePlayback: () => connection.current?.resumePlayback(),
+    skipPlayback: () => connection.current?.skipPlayback(),
     toggleMute: () => {
       if (connection.current?.send({ type: "mute", on: !muted })) setMuted(!muted);
     },
@@ -128,7 +132,7 @@ export function DanaBriefing({ heading, briefing, onContinue, call = "briefing" 
         : <h2 id="dana-call-title" ref={heading} tabIndex={-1}>{labels.title}</h2>}
       <p role="status" className="muted">{status}</p>
       {notice ? <p className="notice" role="alert">{notice}</p> : null}
-      <div className="captions" ref={log} role="log" aria-label="Dana captions" onScroll={({ currentTarget }) => {
+      <div className="captions" ref={log} role="log" aria-label="Dana captions" tabIndex={0} onScroll={({ currentTarget }) => {
         following.current = currentTarget.scrollHeight - currentTarget.clientHeight - currentTarget.scrollTop <= 8;
       }}>
         {captions.length ? captions.map((caption, index) => (
@@ -137,7 +141,7 @@ export function DanaBriefing({ heading, briefing, onContinue, call = "briefing" 
       </div>
       <form className="message-form" onSubmit={sendText}>
         <label>Message Dana
-          <input maxLength={call === "debrief" ? 3000 : 500} autoComplete="off" value={draft} disabled={!canSend} onChange={event => setDraft(event.target.value)} />
+          <input maxLength={call === "debrief" ? 3000 : 500} autoComplete="off" value={draft} readOnly={state === "draining"} onChange={event => setDraft(event.target.value)} />
         </label>
         <button disabled={!canSend || !draft.trim()}>Send</button>
       </form>
@@ -146,8 +150,11 @@ export function DanaBriefing({ heading, briefing, onContinue, call = "briefing" 
           {mode === "voice" && ready ? (
             <button aria-pressed={muted} onClick={briefing.toggleMute}>{muted ? "Unmute mic" : "Mute mic"}</button>
           ) : null}
-          {state === "failed" && call === "briefing" ? <button onClick={briefing.useFixture}>Use offline briefing</button> : null}
-          {state === "draining" ? <button onClick={briefing.resumePlayback}>Resume audio</button> : null}
+          {state === "failed" && call === "briefing" ? <button onClick={() => briefing.useFixture(true)}>Use offline briefing</button> : null}
+          {state === "draining" ? <>
+            <button onClick={briefing.resumePlayback}>Resume audio</button>
+            <button onClick={briefing.skipPlayback}>Skip remaining audio</button>
+          </> : null}
         </div>
       ) : null}
       <button className="primary" disabled={state === "draining"} onClick={onContinue}>{labels.action}</button>

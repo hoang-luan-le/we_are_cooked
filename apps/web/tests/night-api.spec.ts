@@ -7,6 +7,7 @@ test("uses the demo API for Answer, diagnosis, rollback, recovery and refresh", 
   test.skip(!api, "Start an isolated backend and set NIGHT_TEST_API_ORIGIN.");
   const reset = await request.post(`${api}/api/demo/reset`, { headers: { "X-Demo-User": "demo-a" }, data: { level: "explore" } });
   expect(reset.ok()).toBe(true);
+  const answerKeys: string[] = [];
   const rollbackKeys: string[] = [];
   const briefingSockets: WebSocketRoute[] = [];
   let answerAccepted = false;
@@ -20,11 +21,13 @@ test("uses the demo API for Answer, diagnosis, rollback, recovery and refresh", 
   await page.route("**/api/night", async route => {
     const action: ActionRequest | null = route.request().postDataJSON();
     if (action?.action === "answer") {
+      answerKeys.push(action.idempotency_key);
       const accepted = await route.fetch();
       expect(accepted.ok()).toBe(true);
       expect(briefingSockets).toHaveLength(0);
       answerAccepted = true;
-      await route.fulfill({ response: accepted });
+      if (answerKeys.length === 1) await route.abort("failed");
+      else await route.fulfill({ response: accepted });
       return;
     }
     if (action?.action !== "rollback") {
@@ -44,7 +47,13 @@ test("uses the demo API for Answer, diagnosis, rollback, recovery and refresh", 
   await page.getByRole("link", { name: "Open local API demo" }).click();
   await expect(page.getByText("Local demo API", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Answer Dana by text" }).click();
+  await expect(page.getByRole("button", { name: "Open incident without briefing" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Checkout incident" })).toHaveCount(0);
+  expect(briefingSockets).toHaveLength(0);
+  await page.getByRole("button", { name: "Retry last action" }).click();
   await expect(page.getByRole("heading", { name: "Dana’s briefing" })).toBeVisible();
+  expect(answerKeys).toHaveLength(2);
+  expect(answerKeys[0]).toBe(answerKeys[1]);
   await expect(page.getByRole("log")).toContainText("Inspect checkout, then roll back safely.");
   expect(briefingSockets).toHaveLength(1);
   briefingSockets[0].send(JSON.stringify({ type: "call_ended", reason: "done" }));

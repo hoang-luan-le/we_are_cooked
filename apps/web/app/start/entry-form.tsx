@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import type { Level } from "../../../../packages/contracts/dana";
 import { fixtureCohort, fixtureEntryHref, type FixtureEntry, levels, readFixtureEntry, startFixtureEntry, watchFixtureEntry } from "../night/fixture-entry";
 
@@ -17,6 +17,7 @@ export function EntryForm({ localApiAvailable, teamUser }: { localApiAvailable: 
   const [saved, setSaved] = useState<FixtureEntry | null | undefined>();
   const [error, setError] = useState("");
   const [storageError, setStorageError] = useState(false);
+  const starting = useRef(false);
   const [leaving, setLeaving] = useState(false);
 
   useEffect(() => {
@@ -27,13 +28,15 @@ export function EntryForm({ localApiAvailable, teamUser }: { localApiAvailable: 
   }, [teamUser]);
 
   function enter(kind: FixtureEntry["kind"]) {
-    if (leaving) return;
+    if (starting.current) return;
+    starting.current = true;
     setStorageError(false);
     try {
       const entry = startFixtureEntry(level, kind);
       setLeaving(true);
       router.push(fixtureEntryHref(entry.id));
     } catch {
+      starting.current = false;
       setStorageError(true);
     }
   }
@@ -85,7 +88,9 @@ export function EntryForm({ localApiAvailable, teamUser }: { localApiAvailable: 
           </details>
         ) : null}
         {teamUser ? <TeamEntry user={teamUser} level={level} /> : <>
-        <button className="primary" disabled={leaving} onClick={() => enter("solo")}>Start solo exercise</button>
+        <button className={saved ? undefined : "primary"} disabled={leaving} onClick={() => enter("solo")}>
+          {leaving ? "Opening exercise…" : "Start solo exercise"}
+        </button>
         {saved ? <p className="muted">Starting or joining an exercise replaces the saved exercise in this browser.</p> : null}
         <form className="entry-section entry-join" onSubmit={join}>
           <h2>Join a rehearsal cohort</h2>

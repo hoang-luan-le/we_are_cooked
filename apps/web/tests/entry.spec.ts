@@ -7,6 +7,11 @@ test("starts a solo exercise and resumes its saved recovery after refresh", asyn
   });
   await page.goto("/");
   const start = page.getByRole("link", { name: "Start simulation" });
+  await expect(page.getByRole("region", { name: "The flash-sale page" })).toContainText("31.2%");
+  await start.hover();
+  await page.waitForTimeout(240);
+  await expect(page).toHaveURL("/");
+  expect(await page.evaluate(() => localStorage.length)).toBe(0);
   await start.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { name: "Prepare for your shift." })).toBeVisible();
@@ -27,7 +32,14 @@ test("starts a solo exercise and resumes its saved recovery after refresh", asyn
   await page.reload();
   await expect(page.getByRole("heading", { name: "Checkout incident" })).toBeVisible();
   await page.getByRole("button", { name: "Roll back to v2.13.9" }).click();
+  const rollback = page.getByRole("button", { name: "Roll back to v2.13.9" });
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(rollback).toBeFocused();
+  await rollback.click();
   await page.getByRole("button", { name: "Confirm rollback" }).click();
+  await expect(page.getByText("Recovering", { exact: true })).toBeVisible();
+  await expect(page.getByText("Off", { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("heading", { name: "Checkout incident" })).toBeVisible();
   await expect(page.getByText("Recovered", { exact: true })).toBeVisible({ timeout: 12_000 });
@@ -43,7 +55,10 @@ test.describe("mobile entry", () => {
   test.use({ hasTouch: true, viewport: { width: 360, height: 800 } });
 
   test("recovers from invalid and expired codes and resumes the fixture cohort", async ({ page }) => {
-    await page.goto("/start");
+    await page.goto("/");
+    await expect(page.getByRole("link", { name: "Start simulation" })).toBeInViewport();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+    await page.getByRole("link", { name: "Start simulation" }).tap();
     await page.getByRole("radio", { name: /Challenge/ }).check();
     const code = page.getByRole("textbox", { name: "Cohort code" });
     const join = page.getByRole("button", { name: "Join cohort" });

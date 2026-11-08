@@ -206,3 +206,29 @@ dialog::backdrop { background: rgb(20 31 57 / 45%); }
 @media (prefers-reduced-motion: reduce) {
   .new-evidence { animation: none; }
 }
+
+.landing-home {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr);
+  align-items: center;
+  gap: clamp(24px, 5vw, 72px);
+  max-width: 1120px;
+}
+.landing-home > * + * { margin-top: 0; }
+.landing-home section > * + * { margin-top: 14px; }
+.landing-preview { border-top: 3px solid var(--accent); }
+.preview-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.preview-metrics div { padding: 10px; border-radius: 8px; background: var(--canvas); }
+.preview-metrics dt, .preview-metrics small { color: var(--muted); font-size: .82rem; }
+.preview-metrics dd { margin: 2px 0; font-size: clamp(1.3rem, 4vw, 2rem); font-weight: 750; font-variant-numeric: tabular-nums; }
+.preview-steps { margin-bottom: 0; padding-inline-start: 23px; color: var(--muted); }
+.preview-steps li + li { margin-top: 6px; }
+.preview-steps strong { color: var(--ink); }
+.entry-option:has(input:checked) { border-color: var(--accent); background: #eef2fc; }
+button:active:not(:disabled), .button:active { transform: translateY(1px); }
+@media (max-width: 760px) {
+  .landing-home { grid-template-columns: 1fr; padding-block: 40px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  button:active:not(:disabled), .button:active { transform: none; }
+}

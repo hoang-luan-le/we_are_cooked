@@ -7,6 +7,7 @@ export type DanaConnection = {
   close: () => void;
   isDraining: () => boolean;
   resumePlayback: () => void;
+  skipPlayback: () => void;
   send: (message: DanaClientMsg) => boolean;
 };
 
@@ -222,6 +223,11 @@ export function connectDana({ base, call = "briefing", mode, audio, session, onE
     isDraining: () => Boolean(ended && !closed),
     resumePlayback: () => {
       if (audio?.state === "suspended" || audio?.state === "interrupted") void audio.resume().catch(() => {});
+    },
+    skipPlayback: () => {
+      if (!ended || closed) return;
+      stopPlayback();
+      finishDrain();
     },
     send,
   };

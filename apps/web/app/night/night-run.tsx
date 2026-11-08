@@ -14,6 +14,7 @@ type SupportCall = Exclude<DanaCall, "briefing">;
 
 export function NightRun({ apiUser, relayBase, entry, incidentId }: { apiUser?: string; relayBase?: string; entry?: FixtureEntry; incidentId?: string }) {
   const [stage, setStage] = useState<"page" | "briefing" | "board">(entry?.briefingPending ? "briefing" : entry?.answered ? "board" : "page");
+  const [answerPending, setAnswerPending] = useState(false);
   const [snoozed, setSnoozed] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
   const [supportCall, setSupportCall] = useState<SupportCall>();
@@ -30,8 +31,9 @@ export function NightRun({ apiUser, relayBase, entry, incidentId }: { apiUser?: 
   const closeBriefing = briefing.close;
   const api = useNightApi(Boolean(apiUser), incidentId);
   const incident = api.snapshot?.incident;
+  const recoveringAnswer = stage === "page" && (answerPending || api.retryAction?.action === "answer");
   const visibleStage = incident
-    ? incident.phase === "paged" ? "page" : stage === "briefing" ? "briefing" : "board"
+    ? incident.phase === "paged" || recoveringAnswer ? "page" : stage === "briefing" ? "briefing" : "board"
     : stage;
 
   useEffect(() => {
@@ -51,12 +53,20 @@ export function NightRun({ apiUser, relayBase, entry, incidentId }: { apiUser?: 
   async function perform(intent: NightAction, mode = answerMode.current) {
     if (api.pending) return false;
     const answering = intent.action === "answer";
-    if (answering) answerMode.current = mode;
+    if (answering) {
+      answerMode.current = mode;
+      setStage("page");
+    }
     // Unlock audio on the voice click. Mic capture and the socket wait for Answer acceptance.
     const audio = answering && mode === "voice" && relayBase ? prepareDanaAudio() : undefined;
-    if (apiUser && !await api.act(intent)) {
-      if (audio && audio.state !== "closed") void audio.close();
-      return false;
+    if (apiUser) {
+      if (answering) setAnswerPending(true);
+      const accepted = await api.act(intent);
+      if (answering) setAnswerPending(false);
+      if (!accepted) {
+        if (audio && audio.state !== "closed") void audio.close();
+        return false;
+      }
     }
     if (answering) {
       setCompletedSupport(undefined);
@@ -77,7 +87,7 @@ export function NightRun({ apiUser, relayBase, entry, incidentId }: { apiUser?: 
   function openDashboard() {
     if (briefing.isDraining()) return;
     closeBriefing();
-    setFinalCaption(briefing.state === "ended" ? briefing.captions.findLast(caption => caption.role === "dana")?.text : undefined);
+    setFinalCaption(briefing.captions.findLast(caption => caption.role === "dana")?.text);
     if (entry) setSaveFailed(!updateFixtureEntry(entry.id, { type: "finish_briefing" }));
     if (!api.readError && incident?.allowed_actions.includes("open_panel") && !incident.unlocked.includes("dashboard")) {
       void perform({ action: "open_panel", panel: "dashboard" });
@@ -165,7 +175,7 @@ export function NightRun({ apiUser, relayBase, entry, incidentId }: { apiUser?: 
               : "The demo incident is unavailable.")}</p>
             <div className="actions">
               <button onClick={api.read}>Refresh incident</button>
-              {api.retryAction ? <button onClick={() => api.retryAction && void perform(api.retryAction)}>Retry last action</button> : null}
+              {api.retryAction ? <button disabled={api.pending} onClick={() => api.retryAction && void perform(api.retryAction)}>Retry last action</button> : null}
               {api.readError && incidentId ? <Link className="button" href="/start">Back to simulation entry</Link> : null}
               {api.readError ? <Link className="button" href="/night?fixture=1">Use development fixture</Link> : null}
             </div>
@@ -177,8 +187,11 @@ export function NightRun({ apiUser, relayBase, entry, incidentId }: { apiUser?: 
           <section className="panel call-panel" aria-labelledby="page-title">
             <p className="eyebrow">ShopNorth Checkout · Night shift</p>
             <p className="clock">02:04 <span>a.m.</span></p>
-            <h1 id="page-title">Dana is calling.</h1>
-            <p role="status">{callSnoozed ? "Page snoozed. Dana will ring again shortly." : "Checkout error rate is above the alert threshold."}</p>
+            <h1 id="page-title">{recoveringAnswer ? "Connecting to Dana" : "Dana is calling."}</h1>
+            <p role="status">{api.retryAction?.action === "answer"
+              ? "Retry Answer to reconnect to the briefing."
+              : recoveringAnswer ? "Waiting for the incident to confirm your answer."
+              : callSnoozed ? "Page snoozed. Dana will ring again shortly." : "Checkout error rate is above the alert threshold."}</p>
             <div className="actions">
               <button className="primary" disabled={answerDisabled}
                 onClick={() => void perform({ action: "answer" }, relayBase ? "text" : "fixture")}>
@@ -188,6 +201,9 @@ export function NightRun({ apiUser, relayBase, entry, incidentId }: { apiUser?: 
                 onClick={() => void perform({ action: "answer" }, "voice")}>Answer Dana with voice</button> : null}
               <button disabled={callSnoozed || api.pending || api.readError || (incident && !incident.allowed_actions.includes("snooze"))}
                 onClick={() => void perform({ action: "snooze" })}>Snooze</button>
+              {api.retryAction?.action === "answer" && incident?.phase !== "paged" ? (
+                <button onClick={() => setStage("board")}>Open incident without briefing</button>
+              ) : null}
             </div>
           </section>
         ) : visibleStage === "briefing" ? (
