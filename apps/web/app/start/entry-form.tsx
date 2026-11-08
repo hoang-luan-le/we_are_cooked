@@ -60,7 +60,7 @@ export function EntryForm({ localApiAvailable, teamUser }: { localApiAvailable: 
       {saved ? (
         <section className="panel entry-section" aria-labelledby="saved-title">
           <h2 id="saved-title">Resume your exercise</h2>
-          <p className="muted">{levels[saved.level].title} · {saved.kind === "cohort" ? fixtureCohort.name : "Solo Night 2D"}</p>
+          <p className="muted">{levels[saved.level].title} · {saved.kind === "cohort" ? fixtureCohort.name : "Solo Night shift"}</p>
           <Link className="button primary" href={fixtureEntryHref(saved.id)}>Resume saved exercise</Link>
         </section>
       ) : null}
@@ -108,12 +108,12 @@ export function EntryForm({ localApiAvailable, teamUser }: { localApiAvailable: 
         {storageError ? <p className="notice" role="alert">This browser could not save the exercise. Enable local storage to continue.</p> : null}
         </>}
       </section>
-      {teamUser ? <Link href="/night?fixture=1">Open the offline Night fixture</Link> : null}
+      {teamUser ? <Link href="/night/3d?fixture=1">Open the offline Night fixture</Link> : null}
       {localApiAvailable ? (
         <section className="panel entry-section" aria-labelledby="api-demo-title">
           <h2 id="api-demo-title">Continue the local API demo</h2>
           <p className="muted">Open the current ShopNorth incident on your configured local API.</p>
-          <Link className="button" href="/night">Open local API demo</Link>
+          <Link className="button" href="/night/3d">Open local API demo</Link>
         </section>
       ) : null}
     </div>

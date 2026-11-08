@@ -12,7 +12,7 @@ test("walks from the landing through diagnosis and simulated recovery", async ({
   let socketCount = 0;
   page.on("websocket", () => socketCount++);
   await page.goto("/");
-  await page.getByRole("link", { name: "Start simulation" }).click();
+  await page.getByRole("link", { name: "Night", exact: true }).click();
   await expect(page).toHaveURL(/\/start$/);
   await page.goto("/night?fixture=1");
   await expect(page.getByText("Development fixture", { exact: true })).toBeVisible();

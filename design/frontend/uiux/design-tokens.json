@@ -1,0 +1,117 @@
+{
+  "$schema": "https://tr.designtokens.org/format/",
+  "meta": {
+    "name": "Incident Lab Semantic Design Tokens",
+    "version": "1.0.0-UIUX-ARGON-01",
+    "baseSha": "1e70ee1b6e7ef129f40b9864febfa00a0cc6e1b5",
+    "theme": "light-first-operational",
+    "description": "Semantic light-first tokens for Incident Lab (Public Landing, Start/Resume, 02:04 Dana Alert, Night Incident Board, Rollback & Handoff, Morning Meeting Projector + HTML Panel, Morning Workstation, and Post-Incident Debrief/Rubric/Connections)."
+  },
+  "color": {
+    "bg": {
+      "canvas": { "$value": "#f8fafc", "$description": "Primary page canvas (slate-50)" },
+      "surface": { "$value": "#ffffff", "$description": "Primary card, modal, and panel surface" },
+      "subtle": { "$value": "#f1f5f9", "$description": "Secondary grouping surface, code headers, table headers (slate-100)" },
+      "elevated": { "$value": "#ffffff", "$description": "Elevated dialog, floating HUD pill, or popover surface" },
+      "projector": { "$value": "#0f172a", "$description": "High-contrast dark slate canvas exclusively for the 3D in-room projector plane (readable from across the meeting room)" },
+      "projectorSurface": { "$value": "#1e293b", "$description": "Card surface on the 3D in-room projector plane" },
+      "glass": { "$value": "rgba(255, 255, 255, 0.88)", "$description": "Sticky header and floating HUD bar translucent surface" }
+    },
+    "text": {
+      "ink": { "$value": "#0f172a", "$description": "Primary body and heading ink (17.4:1 on surface)" },
+      "inkSecondary": { "$value": "#334155", "$description": "Secondary body copy and active labels (10.3:1 on surface)" },
+      "muted": { "$value": "#475569", "$description": "Helper text, metadata, captions (7.5:1 on surface, passes AAA)" },
+      "onAccent": { "$value": "#ffffff", "$description": "Text on primary accent buttons" },
+      "onProjector": { "$value": "#f8fafc", "$description": "Primary text on in-room projector surface" },
+      "onProjectorMuted": { "$value": "#cbd5e1", "$description": "Secondary labels on in-room projector surface" }
+    },
+    "border": {
+      "subtle": { "$value": "#e2e8f0", "$description": "Default card, table row, and section divider border" },
+      "strong": { "$value": "#cbd5e1", "$description": "Interactive control border, input border, and active card frame" },
+      "accent": { "$value": "#93c5fd", "$description": "Selected radio card or highlighted panel border" }
+    },
+    "accent": {
+      "primary": { "$value": "#1d4ed8", "$description": "Primary interactive brand blue (6.7:1 contrast with white text)" },
+      "primaryHover": { "$value": "#1e40af", "$description": "Primary button hover state" },
+      "primarySoft": { "$value": "#eff6ff", "$description": "Soft tint for active tabs, badges, and selected states" },
+      "focusRing": { "$value": "#2563eb", "$description": "2px solid keyboard focus outline with 2px offset" }
+    },
+    "status": {
+      "danger": {
+        "ink": { "$value": "#b91c1c", "$description": "Critical error rate / P0 alert / failed CI text (6.4:1 on white)" },
+        "bg": { "$value": "#fef2f2", "$description": "Soft danger surface tint" },
+        "border": { "$value": "#fecaca", "$description": "Danger card or alert border" },
+        "projector": { "$value": "#f87171", "$description": "High-visibility coral red on dark projector canvas" }
+      },
+      "warning": {
+        "ink": { "$value": "#b45309", "$description": "Degraded state / loyalty discounts OFF / stale data text (5.1:1 on white)" },
+        "bg": { "$value": "#fffbeb", "$description": "Soft amber warning surface tint" },
+        "border": { "$value": "#fde68a", "$description": "Warning badge or banner border" },
+        "projector": { "$value": "#fbbf24", "$description": "High-visibility amber on dark projector canvas" }
+      },
+      "success": {
+        "ink": { "$value": "#15803d", "$description": "Recovered / CI passing / verified PR text (5.2:1 on white)" },
+        "bg": { "$value": "#f0fdf4", "$description": "Soft green recovery surface tint" },
+        "border": { "$value": "#bbf7d0", "$description": "Success badge or card border" },
+        "projector": { "$value": "#34d399", "$description": "High-visibility emerald on dark projector canvas" }
+      },
+      "info": {
+        "ink": { "$value": "#1d4ed8", "$description": "Active call / Tiger Data live / informational badge text" },
+        "bg": { "$value": "#eff6ff", "$description": "Informational badge background" },
+        "border": { "$value": "#bfdbfe", "$description": "Informational badge border" }
+      }
+    }
+  },
+  "typography": {
+    "fontFamily": {
+      "sans": { "$value": "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" },
+      "display": { "$value": "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif" },
+      "mono": { "$value": "'JetBrains Mono', 'Cascadia Code', 'Fira Code', ui-monospace, SFMono-Regular, monospace" }
+    },
+    "scale": {
+      "heroTitle": { "fontSize": "clamp(2.25rem, 4vw, 3.5rem)", "lineHeight": "1.08", "letterSpacing": "-0.03em", "fontWeight": "800" },
+      "pageTitle": { "fontSize": "clamp(1.65rem, 2.6vw, 2.25rem)", "lineHeight": "1.15", "letterSpacing": "-0.025em", "fontWeight": "700" },
+      "sectionTitle": { "fontSize": "clamp(1.2rem, 1.8vw, 1.5rem)", "lineHeight": "1.25", "letterSpacing": "-0.015em", "fontWeight": "700" },
+      "cardTitle": { "fontSize": "1.0625rem", "lineHeight": "1.35", "letterSpacing": "-0.01em", "fontWeight": "600" },
+      "body": { "fontSize": "0.96875rem", "lineHeight": "1.55", "fontWeight": "400" },
+      "caption": { "fontSize": "0.8125rem", "lineHeight": "1.45", "fontWeight": "500" },
+      "eyebrow": { "fontSize": "0.75rem", "lineHeight": "1.3", "letterSpacing": "0.08em", "fontWeight": "700", "textTransform": "uppercase" },
+      "kpiLarge": { "fontSize": "clamp(1.75rem, 2.8vw, 2.5rem)", "lineHeight": "1.05", "fontWeight": "800", "fontVariantNumeric": "tabular-nums" },
+      "callClock": { "fontSize": "clamp(2.75rem, 5vw, 3.75rem)", "lineHeight": "1.0", "fontWeight": "800", "fontVariantNumeric": "tabular-nums" },
+      "projectorKpi": { "fontSize": "clamp(1.6rem, 2.4vw, 2.25rem)", "lineHeight": "1.1", "fontWeight": "800", "fontVariantNumeric": "tabular-nums" }
+    }
+  },
+  "spacing": {
+    "xs": "4px",
+    "sm": "8px",
+    "md": "12px",
+    "lg": "16px",
+    "xl": "24px",
+    "2xl": "32px",
+    "3xl": "48px",
+    "4xl": "64px"
+  },
+  "layout": {
+    "maxWidth": {
+      "shell": "1320px",
+      "landing": "1240px",
+      "reading": "68ch",
+      "callAlert": "min(500px, calc(100vw - 32px))",
+      "dialog": "min(520px, calc(100vw - 32px))"
+    },
+    "radius": {
+      "sm": "8px",
+      "md": "12px",
+      "lg": "16px",
+      "xl": "20px",
+      "pill": "9999px"
+    },
+    "touchTargetMin": "44px"
+  },
+  "motion": {
+    "fast": { "$value": "140ms cubic-bezier(0.22, 1, 0.36, 1)", "$description": "Button, tab, pill, and row hover/focus feedback" },
+    "panel": { "$value": "200ms cubic-bezier(0.22, 1, 0.36, 1)", "$description": "Incoming call -> briefing morph, drawer/modal entrance, beat change" },
+    "camera": { "$value": "300ms cubic-bezier(0.22, 1, 0.36, 1)", "$description": "Seated monitor/projector frame handoff (disabled under prefers-reduced-motion)" },
+    "prefetchIntentDelayMs": { "$value": 200, "$description": "Hover/focus intent delay before prefetching /start or next shift route" }
+  }
+}

@@ -31,14 +31,14 @@ test("3D Night and Morning drive the real incident through the shared actions", 
   const state = async (): Promise<IncidentState> => (await request.get(`${api}/api/incident/${id}`, { headers })).json();
 
   // Bedroom: Answer through the HTML control in the scene.
-  await page.goto(`/night/3d?incident=${id}&worldDebug=1`);
+  await page.goto(`/night/3d?incident=${id}&worldDebug=1&noIntro=1`);
   await ready(page);
-  await expect(page.getByText("Local demo API", { exact: true })).toBeAttached();
   expect((await state()).phase).toBe("paged");
-  await page.getByRole("button", { name: "Answer Dana by text" }).click();
+  await page.getByRole("button", { name: "Accept" }).click();
   await expect.poll(async () => (await state()).phase).not.toBe("paged");
-  await expect(page.getByRole("button", { name: "Continue to dashboard" })).toBeVisible({ timeout: 15_000 });
-  await page.getByRole("button", { name: "Continue to dashboard" }).click();
+  await expect(page.getByRole("button", { name: "End", exact: true })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: "End", exact: true }).click();
+  await page.evaluate(async () => { const w = (window as unknown as { __world: { callPhase: string; mode: string; standUp(): void } }).__world; while (w.callPhase !== "idle" || w.mode !== "seated") await new Promise(r => setTimeout(r, 40)); w.standUp(); while ((w.mode as string) !== "walk") await new Promise(r => setTimeout(r, 40)); });
 
   // Computer opens the same board. Rollback goes through the same API action.
   await goSit(page, "computer");
@@ -60,7 +60,15 @@ test("3D Night and Morning drive the real incident through the shared actions", 
   expect(handoff.ok()).toBe(true);
   await expect.poll(async () => { await page.getByRole("button", { name: "Back to the room" }).isVisible(); return (await state()).handoff !== null; }).toBe(true);
 
+  // Resuming a live incident skips the wake-up.
+  await page.goto(`/night/3d?incident=${id}&worldDebug=1`);
+  await ready(page);
+  await expect.poll(() => page.evaluate(() => window.__world.mode), { timeout: 10_000 }).toBe("walk");
+  await expect(page.getByRole("button", { name: "Skip wake-up" })).toHaveCount(0);
+
   // The Night link enters the office instead of leaving 3D.
+  await page.evaluate(() => (window as unknown as { __world: { goTo(id: string): void } }).__world.goTo("computer"));
+  await expect(page.getByRole("button", { name: "Back to the room" })).toBeVisible({ timeout: 10_000 });
   const link = page.getByRole("link", { name: "Open Morning workspace" });
   await expect(link).toBeVisible({ timeout: 15_000 });
   await link.click();
@@ -69,7 +77,8 @@ test("3D Night and Morning drive the real incident through the shared actions", 
   await ready(page);
 
   await goSit(page, "meeting-seat");
-  await expect(page.getByRole("region", { name: "Night shift handoff" })).toContainText("Guest checkout failed during the sale.");
+  await expect(page.locator(".meeting")).toContainText("Guest checkout failed during the sale.");
+  await expect(page.locator(".meeting")).toContainText("Local API");
   await page.screenshot({ path: `${evidence}/api-office-briefing.png` });
   await leaveSeat(page);
 
@@ -90,4 +99,6 @@ test("3D Night and Morning drive the real incident through the shared actions", 
   await page.goto(`/night/3d?incident=${id}&no3d=1`);
   await expect(page.getByRole("heading", { name: "Checkout incident" })).toBeVisible();
   expect((await state()).status).toBe(after.status);
+  await page.goto(`/incident/${id}`);
+  await expect(page).toHaveURL(`/morning/3d?incident=${id}`);
 });

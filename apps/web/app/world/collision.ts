@@ -1,5 +1,5 @@
 // Circle-versus-rectangle movement on the ground plane. No three.js here, so it can be tested on its own.
-export type Rect = { name: string; minX: number; maxX: number; minZ: number; maxZ: number };
+export type Rect = { name: string; minX: number; maxX: number; minZ: number; maxZ: number; maxY?: number };
 
 export function overlaps(x: number, z: number, radius: number, rect: Rect) {
   const dx = x - Math.max(rect.minX, Math.min(x, rect.maxX));
@@ -41,6 +41,50 @@ export function resolve(x: number, z: number, radius: number, rects: readonly Re
     if (!moved) break;
   }
   return { x, z };
+}
+
+/** True when the straight ground segment crosses a rectangle (slab test). Used for line of sight. */
+export function segmentHits(ax: number, az: number, bx: number, bz: number, rect: Rect) {
+  let t0 = 0, t1 = 1;
+  const dx = bx - ax, dz = bz - az;
+  for (const [d, a, min, max] of [[dx, ax, rect.minX, rect.maxX], [dz, az, rect.minZ, rect.maxZ]] as const) {
+    if (Math.abs(d) < 1e-9) {
+      if (a < min || a > max) return false;
+      continue;
+    }
+    let near = (min - a) / d, far = (max - a) / d;
+    if (near > far) [near, far] = [far, near];
+    t0 = Math.max(t0, near);
+    t1 = Math.min(t1, far);
+    if (t0 > t1) return false;
+  }
+  return true;
+}
+
+/**
+ * How far a camera arm can extend from a pivot before it would enter geometry.
+ * `n` is the number of steps and `r` the rectangles, so this is O(n·r) once per frame in third person.
+ */
+export function freeArmLength(
+  pivot: readonly [number, number, number], back: readonly [number, number, number], want: number,
+  rects: readonly Rect[], ceilingY: number, margin: number, step = 0.06,
+) {
+  const blocked = (d: number) => {
+    const x = pivot[0] + back[0] * d, y = pivot[1] + back[1] * d, z = pivot[2] + back[2] * d;
+    if (y > ceilingY - margin || y < margin) return true;
+    return rects.some(rect => !(rect.maxY !== undefined && y > rect.maxY + margin) && overlaps(x, z, margin, rect));
+  };
+  let last = 0;
+  for (let d = step; d <= want + 1e-6; d += step) {
+    if (blocked(d)) {
+      // Refine, so the arm length changes continuously instead of in whole steps.
+      let hi = d;
+      for (let i = 0; i < 6; i++) { const mid = (last + hi) / 2; if (blocked(mid)) hi = mid; else last = mid; }
+      return last;
+    }
+    last = d;
+  }
+  return want;
 }
 
 /** Breadth-first reachability on a grid. `n` is the number of cells visited, each step is O(rects). */

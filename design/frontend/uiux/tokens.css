@@ -1,0 +1,112 @@
+/* ==========================================================================
+   Incident Lab — Semantic Light-First Design System Tokens (UIUX-ARGON-01)
+   Base SHA: 1e70ee1b6e7ef129f40b9864febfa00a0cc6e1b5
+   Owner: Argon (Product Design, Visual System, Interaction Design)
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* Surface hierarchy */
+  --bg-canvas: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-subtle: #f1f5f9;
+  --bg-elevated: #ffffff;
+  --bg-glass: rgba(255, 255, 255, 0.88);
+
+  /* Dedicated high-contrast in-room projector tokens (Morning 3D room wall screen) */
+  --bg-projector: #0f172a;
+  --bg-projector-surface: #1e293b;
+  --bg-projector-subtle: #334155;
+  --ink-projector: #f8fafc;
+  --muted-projector: #cbd5e1;
+
+  /* Ink & typography colors (WCAG AA/AAA verified on --bg-surface) */
+  --ink: #0f172a;            /* 17.4:1 */
+  --ink-secondary: #334155;  /* 10.3:1 */
+  --muted: #475569;          /* 7.5:1 */
+
+  /* Borders & dividers */
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --border-accent: #93c5fd;
+
+  /* Primary interactive accent */
+  --accent: #1d4ed8;         /* 6.7:1 with #ffffff */
+  --accent-hover: #1e40af;
+  --accent-soft: #eff6ff;
+  --focus-ring: #2563eb;
+
+  /* Semantic status tokens (always paired with explicit text + icon) */
+  --danger: #b91c1c;
+  --danger-bg: #fef2f2;
+  --danger-border: #fecaca;
+  --danger-projector: #f87171;
+
+  --warning: #b45309;
+  --warning-bg: #fffbeb;
+  --warning-border: #fde68a;
+  --warning-projector: #fbbf24;
+
+  --success: #15803d;
+  --success-bg: #f0fdf4;
+  --success-border: #bbf7d0;
+  --success-projector: #34d399;
+
+  --info: #1d4ed8;
+  --info-bg: #eff6ff;
+  --info-border: #bfdbfe;
+
+  /* Font stacks */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', ui-monospace, SFMono-Regular, monospace;
+
+  /* Spacing & sizing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-pill: 9999px;
+
+  --shell-max-width: 1320px;
+  --landing-max-width: 1240px;
+  --call-card-width: min(500px, calc(100vw - 32px));
+  --dialog-width: min(520px, calc(100vw - 32px));
+  --touch-target-min: 44px;
+
+  /* Elevation shadows */
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-sm: 0 4px 12px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 12px 32px rgba(15, 23, 42, 0.10);
+  --shadow-lg: 0 24px 56px rgba(15, 23, 42, 0.16);
+
+  /* Motion tokens (Rule 15: 140ms fast, 200ms panel, 300ms camera) */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-fast: 140ms;
+  --duration-panel: 200ms;
+  --duration-camera: 300ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-panel: 0ms;
+    --duration-camera: 0ms;
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}

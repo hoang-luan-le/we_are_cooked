@@ -1,0 +1,722 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Incident Lab · UIUX-ARGON-01 prototype</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body data-vp="1440">
+
+<!-- Icon sprite (original, inline) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path fill="currentColor" d="M13 2 4 14h7l-1 8 9-12h-7z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="m5 12 5 5 9-10"/></symbol>
+    <symbol id="i-check-c" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor"/><path fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="m7.5 12 3 3 6-6.5"/></symbol>
+    <symbol id="i-x-c" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor"/><path stroke="#fff" stroke-width="2.4" stroke-linecap="round" d="m8.5 8.5 7 7m0-7-7 7"/></symbol>
+    <symbol id="i-clock-c" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor"/><path fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M12 3 2 20h20z"/><path stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 10v4m0 3v.01"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="2"/><path stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 11v6m0-9.5v.01"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><path fill="currentColor" d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1A17 17 0 0 1 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1z"/></symbol>
+    <symbol id="i-hangup" viewBox="0 0 24 24"><path fill="currentColor" d="M12 9c-3.9 0-7.4 1.5-10 3.9-.4.4-.4 1 0 1.4l2.1 2.1c.4.4.9.4 1.3.1 1.1-.8 2.4-1.4 3.8-1.7.4-.1.8-.5.8-.9v-2.6c1.3-.4 2.7-.4 4 0v2.6c0 .5.3.8.8.9 1.4.3 2.7.9 3.8 1.7.4.3 1 .3 1.3-.1l2.1-2.1c.4-.4.4-1 0-1.4C19.4 10.5 15.9 9 12 9z"/></symbol>
+    <symbol id="i-speaker" viewBox="0 0 24 24"><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></symbol>
+    <symbol id="i-keypad" viewBox="0 0 24 24"><circle cx="6" cy="6" r="1.8" fill="currentColor"/><circle cx="12" cy="6" r="1.8" fill="currentColor"/><circle cx="18" cy="6" r="1.8" fill="currentColor"/><circle cx="6" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="18" cy="12" r="1.8" fill="currentColor"/><circle cx="6" cy="18" r="1.8" fill="currentColor"/><circle cx="12" cy="18" r="1.8" fill="currentColor"/><circle cx="18" cy="18" r="1.8" fill="currentColor"/></symbol>
+    <symbol id="i-signal" viewBox="0 0 24 24"><rect x="2" y="15" width="3" height="5" rx="1" fill="currentColor"/><rect x="7" y="12" width="3" height="8" rx="1" fill="currentColor"/><rect x="12" y="8" width="3" height="12" rx="1" fill="currentColor"/><rect x="17" y="4" width="3" height="16" rx="1" fill="currentColor"/></symbol>
+    <symbol id="i-battery" viewBox="0 0 24 24"><rect x="2" y="7" width="17" height="10" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="4" y="9" width="13" height="6" rx="1" fill="currentColor"/><rect x="20" y="10" width="2" height="4" rx=".8" fill="currentColor"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M4 5h16v11H9l-5 4z"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M5 11a7 7 0 0 0 14 0M12 18v3"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path fill="currentColor" d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><path stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 2v2m0 16v2M2 12h2m16 0h2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-git" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="6" cy="19" r="2.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="12" r="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" d="M6 7.5v9M6 12h4a5 5 0 0 0 5.5-2"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></symbol>
+    <symbol id="i-scale" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="14" y="3" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="3" y="14" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><path stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M17.5 14v7M14 17.5h7"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path fill="currentColor" d="M15 3 21 9l-3 1-4 4 1 5-2 2-4-4-5 5-1-1 5-5-4-4 2-2 5 1 4-4z"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path fill="currentColor" d="M7 4v16l13-8z"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4.5" y="10" width="15" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="7.5" ry="3" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" d="M4.5 5.5v13c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-13M4.5 12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3"/></symbol>
+    <symbol id="i-tag" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M3 12V3h9l9 9-9 9z"/><circle cx="7.5" cy="7.5" r="1.5" fill="currentColor"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-cube" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="m12 2 9 5v10l-9 5-9-5V7zM3 7l9 5 9-5M12 12v10"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3" fill="currentColor"/></symbol>
+  </defs>
+</svg>
+
+<!-- ===================== Prototype review bar ===================== -->
+<div class="proto-bar" role="region" aria-label="Prototype controls (not part of the product)">
+  <strong>Incident Lab · UIUX-ARGON-01 prototype</strong>
+  <label>Screen
+    <select id="pc-screen">
+      <option value="landing">1 · Landing (/)</option>
+      <option value="start">2 · Entry & resume (/start)</option>
+      <option value="call">3 · 02:04 call + Dana (/night)</option>
+      <option value="board">4 · Night incident board</option>
+      <option value="handoff">5 · Rollback & handoff</option>
+      <option value="meeting">6 · Morning meeting (/morning)</option>
+      <option value="workstation">7 · Workstation & PR</option>
+      <option value="after">8 · After the incident</option>
+      <option value="hud">9 · 3D HUD & 2D fallback</option>
+    </select>
+  </label>
+  <label>Viewport
+    <select id="pc-vp">
+      <option value="1440">1440 desktop</option>
+      <option value="768">768 tablet</option>
+      <option value="390">390 mobile</option>
+      <option value="320">320 small</option>
+    </select>
+  </label>
+  <label>State <select id="pc-state"></select></label>
+  <label><input type="checkbox" id="pc-rm"> Reduced motion</label>
+  <span class="spacer"></span>
+  <span id="pc-note" aria-live="polite"></span>
+</div>
+
+<div class="proto-frame" id="frame">
+
+<!-- Shared product header -->
+<header class="app-header" id="app-header">
+  <div class="container">
+    <a class="brand" href="#landing" data-go="landing" aria-label="Incident Lab home">
+      <span class="brand-mark"><svg><use href="#i-bolt"/></svg></span><span class="full">Incident Lab</span>
+    </a>
+    <nav class="nav" aria-label="Primary">
+      <a href="#how" data-go="landing" data-scroll="how">How it works</a>
+      <a href="#levels" data-go="landing" data-scroll="levels">Levels</a>
+      <a href="#preview" data-go="landing" data-scroll="preview">Preview</a>
+    </nav>
+    <div class="header-actions">
+      <span class="badge badge-info" id="hdr-source"><span class="dot"></span>Rehearsal fixture</span>
+      <a class="btn btn-ghost" href="#start" data-go="start">Resume</a>
+      <a class="btn btn-primary" href="#start" data-go="start" data-prefetch="/start">Start simulation</a>
+      <button class="btn menu-btn" id="menu-btn" aria-expanded="false" aria-controls="drawer" aria-label="Open menu"><svg width="20" height="20"><use href="#i-menu"/></svg></button>
+    </div>
+  </div>
+  <div class="drawer" id="drawer">
+    <a href="#how" data-go="landing" data-scroll="how">How it works</a>
+    <a href="#levels" data-go="landing" data-scroll="levels">Levels</a>
+    <a href="#preview" data-go="landing" data-scroll="preview">Preview</a>
+    <a href="#start" data-go="start">Start or resume a shift</a>
+  </div>
+  <div class="shift-bar" id="shift-bar" hidden>
+    <div class="container" role="list" aria-label="Shift progress">
+      <span class="shift-step" role="listitem" data-step="call"><span class="n">1</span>Answer Dana</span><span class="shift-sep"></span>
+      <span class="shift-step" role="listitem" data-step="board"><span class="n">2</span>Investigate</span><span class="shift-sep"></span>
+      <span class="shift-step" role="listitem" data-step="handoff"><span class="n">3</span>Stabilize & hand off</span><span class="shift-sep"></span>
+      <span class="shift-step" role="listitem" data-step="meeting"><span class="n">4</span>Morning meeting</span><span class="shift-sep"></span>
+      <span class="shift-step" role="listitem" data-step="workstation"><span class="n">5</span>Fix & review</span><span class="shift-sep"></span>
+      <span class="shift-step" role="listitem" data-step="after"><span class="n">6</span>Debrief</span>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- =============================== 1. LANDING =============================== -->
+<section class="screen" id="screen-landing" data-screen="landing" aria-label="Landing page">
+  <div class="hero">
+    <div class="container hero-grid">
+      <div>
+        <span class="badge badge-info"><span class="dot dot-live"></span>On-call simulation · ShopNorth pilot</span>
+        <h1>Take the <span class="hl">2:04 a.m. call</span> before your first on-call shift.</h1>
+        <p class="hero-lead">Dana, your AI engineering manager, pages you about a broken checkout. Read the telemetry, roll back safely, hand off, then ship the tested fix with a teammate the next morning.</p>
+        <div class="hero-ctas">
+          <a class="btn btn-primary btn-lg" href="#start" data-go="start" data-prefetch="/start" id="hero-start">Start simulation <svg width="18" height="18"><use href="#i-arrow"/></svg></a>
+          <a class="btn btn-lg" href="#preview" data-scroll="preview"><svg width="16" height="16"><use href="#i-play"/></svg> Preview the three shifts</a>
+        </div>
+        <p class="prefetch-hint" id="prefetch-hint" aria-live="polite"></p>
+        <div class="hero-meta">
+          <span><svg><use href="#i-check"/></svg>About 45 minutes</span>
+          <span><svg><use href="#i-check"/></svg>Text or voice, always captioned</span>
+          <span><svg><use href="#i-check"/></svg>Hints never lower your score</span>
+        </div>
+      </div>
+
+      <div class="preview" id="preview" aria-label="Interactive product preview">
+        <div class="preview-chrome">
+          <div class="preview-dots"><i></i><i></i><i></i></div>
+          <div class="preview-url" id="pv-url">incident-lab / night / board</div>
+        </div>
+        <div class="tabs" role="tablist" aria-label="Preview a shift">
+          <button class="tab" role="tab" id="pvt-1" aria-controls="pvp-1" aria-selected="true" tabindex="0"><svg width="14" height="14"><use href="#i-moon"/></svg>Investigate <span class="tab-time">02:04</span></button>
+          <button class="tab" role="tab" id="pvt-2" aria-controls="pvp-2" aria-selected="false" tabindex="-1"><svg width="14" height="14"><use href="#i-undo"/></svg>Recover <span class="tab-time">02:06</span></button>
+          <button class="tab" role="tab" id="pvt-3" aria-controls="pvp-3" aria-selected="false" tabindex="-1"><svg width="14" height="14"><use href="#i-sun"/></svg>Review <span class="tab-time">09:15</span></button>
+        </div>
+        <div class="preview-stage">
+          <div class="preview-panel is-active" role="tabpanel" id="pvp-1" aria-labelledby="pvt-1" data-url="incident-lab / night / board">
+            <div class="pv-head"><h4>Checkout incident · v2.14.0</h4><span class="badge badge-danger"><svg><use href="#i-alert"/></svg>P0 · Investigating</span></div>
+            <div class="pv-kpis">
+              <div class="pv-kpi"><div class="lbl">Error rate</div><div class="val" style="color:var(--danger)">31.2%</div><div class="delta muted">from 0.4%</div></div>
+              <div class="pv-kpi"><div class="lbl">Orders / min</div><div class="val">290</div><div class="delta muted">from 420</div></div>
+              <div class="pv-kpi"><div class="lbl">p95 latency</div><div class="val">1,450<small style="font-size:12px"> ms</small></div><div class="delta muted">from 380 ms</div></div>
+            </div>
+            <div class="pv-chart"><svg viewBox="0 0 400 110" preserveAspectRatio="none" aria-label="Error rate rises after the 01:47 deploy">
+              <line x1="120" y1="0" x2="120" y2="110" stroke="#94a3b8" stroke-dasharray="3 3"/><text x="124" y="12" font-size="10" fill="#475569" font-family="monospace">01:47 deploy</text>
+              <line x1="300" y1="0" x2="300" y2="110" stroke="#b91c1c" stroke-dasharray="3 3"/><text x="304" y="12" font-size="10" fill="#b91c1c" font-family="monospace">02:04 alert</text>
+              <path d="M0 100 L120 99 L150 70 L190 38 L250 30 L300 26 L400 22 L400 110 L0 110Z" fill="rgba(185,28,28,.08)"/>
+              <path d="M0 100 L120 99 L150 70 L190 38 L250 30 L300 26 L400 22" fill="none" stroke="#b91c1c" stroke-width="2.4"/>
+            </svg></div>
+            <div class="pv-log">02:03:58 <span class="err">ERROR</span> KeyError: 'tier' · checkout/pricing.py:18 loyalty_percent</div>
+          </div>
+          <div class="preview-panel" role="tabpanel" id="pvp-2" aria-labelledby="pvt-2" data-url="incident-lab / night / rollback" hidden>
+            <div class="pv-head"><h4>Rolled back to v2.13.9</h4><span class="badge badge-success"><svg><use href="#i-check"/></svg>Stabilized</span></div>
+            <div class="pv-kpis">
+              <div class="pv-kpi"><div class="lbl">Error rate</div><div class="val" style="color:var(--success)">0.4%</div><div class="delta" style="color:var(--success)">back to baseline</div></div>
+              <div class="pv-kpi"><div class="lbl">Orders / min</div><div class="val">418</div><div class="delta" style="color:var(--success)">recovered</div></div>
+              <div class="pv-kpi"><div class="lbl">p95 latency</div><div class="val">390<small style="font-size:12px"> ms</small></div><div class="delta" style="color:var(--success)">recovered</div></div>
+            </div>
+            <div class="pv-chart"><svg viewBox="0 0 400 110" preserveAspectRatio="none" aria-label="Error rate falls within 10 seconds of the rollback">
+              <line x1="210" y1="0" x2="210" y2="110" stroke="#15803d" stroke-dasharray="3 3"/><text x="214" y="12" font-size="10" fill="#15803d" font-family="monospace">02:06 rollback</text>
+              <path d="M0 24 L210 22 L240 80 L270 99 L400 100 L400 110 L0 110Z" fill="rgba(21,128,61,.08)"/>
+              <path d="M0 24 L210 22 L240 80 L270 99 L400 100" fill="none" stroke="#15803d" stroke-width="2.4"/>
+            </svg></div>
+            <div class="notice notice-warning"><svg><use href="#i-tag"/></svg><span><b>Remaining risk:</b> loyalty discounts are off until the code fix ships.</span></div>
+          </div>
+          <div class="preview-panel" role="tabpanel" id="pvp-3" aria-labelledby="pvt-3" data-url="github.com / shopnorth-checkout / pull / 42" hidden>
+            <div class="pv-head"><h4>fix: default loyalty tier for guests</h4><span class="badge badge-success"><svg><use href="#i-git"/></svg>Ready to deploy</span></div>
+            <div class="pv-log"><span class="err">- tier = customer.profile["tier"]</span><br><span class="ok">+ tier = customer.profile.get("tier")</span><br><span class="ok">+ if tier not in DISCOUNTS: return 0</span></div>
+            <div class="pv-check ok"><svg><use href="#i-check-c"/></svg>CI · 5 pricing tests pass (guest $100 → $80)</div>
+            <div class="pv-check ok"><svg><use href="#i-check-c"/></svg>Reviewed by your morning teammate (not the author)</div>
+            <div class="pv-check wait"><svg><use href="#i-clock-c"/></svg>Deploy restores loyalty discounts</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="logos">
+    <div class="container logos-row" aria-label="Built with">
+      <span><svg width="14" height="14"><use href="#i-git"/></svg>Real GitHub PR + Actions CI</span>
+      <span><svg width="14" height="14"><use href="#i-db"/></svg>Tiger Data telemetry</span>
+      <span><svg width="14" height="14"><use href="#i-mic"/></svg>Captioned voice with text fallback</span>
+      <span><svg width="14" height="14"><use href="#i-cube"/></svg>Optional 3D rooms, full 2D route</span>
+    </div>
+  </div>
+
+  <div class="section section-alt" id="how">
+    <div class="container">
+      <div class="section-head">
+        <span class="eyebrow">How the simulation works</span>
+        <h2>One bug, three shifts, one record of what you did.</h2>
+        <p>You follow the same checkout regression from the first page to the final review.</p>
+      </div>
+      <div class="beats">
+        <article class="card beat">
+          <span class="badge beat-time num">02:04 a.m.</span>
+          <div class="beat-icon" style="background:var(--danger-bg);color:var(--danger)"><svg><use href="#i-phone"/></svg></div>
+          <span class="beat-num">01 · Night</span>
+          <h3>Answer and investigate</h3>
+          <p>Dana briefs you on the impact. You compare errors, orders and latency against the deploy timeline.</p>
+          <ul><li><svg><use href="#i-check"/></svg>Logs, deploy diff and runbook side by side</li><li><svg><use href="#i-check"/></svg>Ask Dana for a hint at any time</li></ul>
+        </article>
+        <article class="card beat">
+          <span class="badge beat-time num">02:06 a.m.</span>
+          <div class="beat-icon" style="background:var(--warning-bg);color:var(--warning)"><svg><use href="#i-undo"/></svg></div>
+          <span class="beat-num">02 · Stabilize</span>
+          <h3>Roll back and hand off</h3>
+          <p>Choose the safe mitigation, watch checkout recover, and write a handoff the morning team can act on.</p>
+          <ul><li><svg><use href="#i-check"/></svg>Every action states its trade-off</li><li><svg><use href="#i-check"/></svg>Four-part handoff note</li></ul>
+        </article>
+        <article class="card beat">
+          <span class="badge beat-time num">09:15 a.m.</span>
+          <div class="beat-icon" style="background:var(--success-bg);color:var(--success)"><svg><use href="#i-git"/></svg></div>
+          <span class="beat-num">03 · Morning</span>
+          <h3>Fix, review and prove</h3>
+          <p>Join the standup, pair on a real pull request, pass CI and peer review, deploy, then debrief with Dana.</p>
+          <ul><li><svg><use href="#i-check"/></svg>Author and reviewer roles</li><li><svg><use href="#i-check"/></svg>Rubric and private evidence record</li></ul>
+        </article>
+      </div>
+    </div>
+  </div>
+
+  <div class="section" id="levels">
+    <div class="container">
+      <div class="section-head">
+        <span class="eyebrow">Choose your guidance</span>
+        <h2>Same incident, three levels of support.</h2>
+        <p>Every level reaches the same root cause. You can switch before each shift starts.</p>
+      </div>
+      <div class="levels">
+        <article class="card level">
+          <span class="badge">New to code</span>
+          <h3>Explore</h3>
+          <p class="who">High school and early learners</p>
+          <ul><li><svg><use href="#i-check"/></svg>Five-step checklist and glossary tips</li><li><svg><use href="#i-check"/></svg>No timer</li><li><svg><use href="#i-check"/></svg>Guided review of the morning fix</li></ul>
+        </article>
+        <article class="card level is-featured">
+          <span class="badge badge-info">Recommended</span>
+          <h3>Practice</h3>
+          <p class="who">Students and bootcamp learners</p>
+          <ul><li><svg><use href="#i-check"/></svg>Hints from Dana on request</li><li><svg><use href="#i-check"/></svg>Full incident board</li><li><svg><use href="#i-check"/></svg>Write the fix with a teammate</li></ul>
+        </article>
+        <article class="card level">
+          <span class="badge">Experienced</span>
+          <h3>Challenge</h3>
+          <p class="who">Interns and early-career engineers</p>
+          <ul><li><svg><use href="#i-check"/></svg>Optional shift timer</li><li><svg><use href="#i-check"/></svg>Fewer prompts, you lead the response</li><li><svg><use href="#i-check"/></svg>Lead the morning handoff</li></ul>
+        </article>
+      </div>
+    </div>
+  </div>
+
+  <div class="container" style="padding-bottom:24px">
+    <div class="cta-band">
+      <div>
+        <h2>Your pager goes off at 2:04 a.m.</h2>
+        <p>ShopNorth is a fictional store. The pull request, CI run and review are real.</p>
+      </div>
+      <div class="actions">
+        <a class="btn btn-primary btn-lg" href="#start" data-go="start" data-prefetch="/start">Start simulation</a>
+        <a class="btn btn-lg" href="#start" data-go="start">Join with a cohort code</a>
+      </div>
+    </div>
+  </div>
+  <footer class="footer">
+    <div class="container">
+      <span>© 2026 Incident Lab · Hack the Change 2026</span>
+      <span><a href="#how" data-scroll="how">How it works</a><a href="#levels" data-scroll="levels">Levels</a><a href="#privacy">Privacy</a></span>
+    </div>
+  </footer>
+</section>
+
+<!-- =============================== 2. START =============================== -->
+<section class="screen" id="screen-start" data-screen="start" aria-labelledby="start-title">
+  <div class="container">
+    <div class="page-head">
+      <span class="eyebrow">ShopNorth checkout · Night shift</span>
+      <h1 id="start-title">Start or resume your shift</h1>
+      <p>Pick how much guidance you want, then go solo or join your cohort. Your progress saves in this browser.</p>
+    </div>
+
+    <div class="card resume" id="resume-card">
+      <div class="resume-icon"><svg><use href="#i-play"/></svg></div>
+      <div>
+        <h3 style="font-size:17px">Resume your saved shift</h3>
+        <div class="resume-meta">
+          <span class="badge mono">inc_468a2937</span>
+          <span class="badge badge-warning">Investigating</span>
+          <span class="badge num">02:05 a.m.</span>
+          <span class="badge">Practice</span>
+        </div>
+      </div>
+      <div class="resume-actions">
+        <button class="btn btn-primary" data-go="board">Resume shift</button>
+        <button class="btn btn-ghost" id="replace-btn" aria-expanded="false" aria-controls="replace-confirm">Start a new shift</button>
+      </div>
+      <div class="notice notice-warning replace-confirm" id="replace-confirm" hidden style="grid-column:1/-1">
+        <svg><use href="#i-alert"/></svg>
+        <div style="display:grid;gap:10px">
+          <span>Starting a new shift replaces <b class="mono">inc_468a2937</b> in this browser. Your teammates keep their copy.</span>
+          <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-danger" id="replace-yes">Replace and start new</button><button class="btn" id="replace-no">Keep my saved shift</button></div>
+        </div>
+      </div>
+    </div>
+
+    <h2 style="font-size:17px;margin:28px 0 12px" id="lvl-h">Guidance level</h2>
+    <div class="level-pick" role="radiogroup" aria-labelledby="lvl-h">
+      <label class="level-opt"><input type="radio" name="lvl" value="explore"><div class="lo-head"><strong>Explore</strong><span class="radio"></span></div><p>Checklist, glossary tips, no timer. You review the morning fix.</p></label>
+      <label class="level-opt"><input type="radio" name="lvl" value="practice" checked><div class="lo-head"><strong>Practice</strong><span class="badge badge-info">Recommended</span></div><p>Hints on request and the full board. You write the fix with a teammate.</p></label>
+      <label class="level-opt"><input type="radio" name="lvl" value="challenge"><div class="lo-head"><strong>Challenge</strong><span class="radio"></span></div><p>Optional timer and fewer prompts. You lead the response.</p></label>
+    </div>
+    <p class="muted" style="font-size:13.5px;margin-top:10px"><svg width="14" height="14" style="vertical-align:-2px"><use href="#i-info"/></svg> Asking Dana for a hint never lowers your score at any level.</p>
+
+    <div class="start-split">
+      <div class="card card-pad">
+        <div class="card-head" style="margin:0"><h3>Solo shift</h3><span class="badge">About 45 min</span></div>
+        <p class="muted">Run the full night and morning yourself. Dana plays your teammate in the morning review.</p>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-size:13px;font-weight:600;color:var(--ink-secondary)">Data source</span>
+          <div class="source-toggle" role="group" aria-label="Data source">
+            <button aria-pressed="true" data-src="fixture">Rehearsal fixture</button>
+            <button aria-pressed="false" data-src="api">Team API</button>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-lg" data-go="call" style="margin-top:auto">Start solo shift <svg width="18" height="18"><use href="#i-arrow"/></svg></button>
+      </div>
+      <form class="card card-pad" id="cohort-form" novalidate>
+        <div class="card-head" style="margin:0"><h3>Join your cohort</h3><span class="badge"><svg><use href="#i-users"/></svg>2–4 people</span></div>
+        <div class="cohort-row">
+          <div class="field"><label for="c-code">Cohort code</label><input class="input code-input" id="c-code" maxlength="6" autocomplete="off" placeholder="ABC123" aria-describedby="c-code-help c-code-err"><span class="muted" id="c-code-help" style="font-size:12.5px">6 letters or numbers from your host</span></div>
+          <div class="field"><label for="c-name">Display name</label><input class="input" id="c-name" placeholder="e.g. Nova" autocomplete="nickname"><span class="muted" style="font-size:12.5px">Shown to teammates only</span></div>
+        </div>
+        <p class="field-error" id="c-code-err" hidden><svg width="14" height="14"><use href="#i-alert"/></svg><span></span></p>
+        <button class="btn btn-lg" type="submit">Join cohort</button>
+      </form>
+    </div>
+    <div style="height:48px"></div>
+  </div>
+</section>
+
+<!-- =============================== 3. CALL =============================== -->
+<section class="screen" id="screen-call" data-screen="call" aria-label="Incoming call">
+  <div class="call-stage" id="call-stage">
+    <div class="call-card" id="call-card" role="dialog" aria-modal="false" aria-labelledby="call-title" aria-describedby="call-impact">
+      <div class="phone-statusbar" aria-hidden="true">
+        <span class="phone-time num" id="call-clock">02:04</span>
+        <span class="phone-island"><i class="island-dot"></i></span>
+        <span class="phone-icons"><svg width="14" height="14"><use href="#i-signal"/></svg><svg width="16" height="14"><use href="#i-battery"/></svg></span>
+      </div>
+
+      <div class="ring-view">
+        <div class="phone-caller">
+          <span class="phone-pill">P0 CRITICAL ALERT · 02:04 A.M.</span>
+          <h2 id="call-title">Dana</h2>
+          <p class="phone-sub">ShopNorth On-Call · Engineering Manager</p>
+        </div>
+
+        <div class="phone-impact-banner" id="call-impact">
+          <div class="pib-head">
+            <span class="pib-label">ShopNorth Checkout · Release v2.14.0</span>
+            <span class="pib-delta num"><span class="from">0.4%</span> → <strong id="call-err">31.2%</strong></span>
+          </div>
+          <p class="pib-sub">Flash-sale checkout error rate crossed P0 alert threshold.</p>
+        </div>
+
+        <div class="phone-snooze-banner" id="snooze-note" hidden>
+          <svg width="16" height="16"><use href="#i-clock-c"/></svg>
+          <span>Snoozed +15s · Errors climbed to <strong>34.8%</strong> (no rubric penalty).</span>
+        </div>
+
+        <div class="call-status" id="call-status" aria-live="polite"></div>
+
+        <div class="phone-secondary-pill-row">
+          <button class="phone-pill-btn" id="answer-text">
+            <svg width="15" height="15"><use href="#i-chat"/></svg>
+            <span>Answer by Text (Captions only · no mic)</span>
+          </button>
+        </div>
+
+        <div class="phone-bottom-actions">
+          <div class="phone-action-col">
+            <button class="phone-round-btn decline" id="snooze" aria-label="Snooze 15 seconds (no penalty)">
+              <svg width="28" height="28"><use href="#i-hangup"/></svg>
+            </button>
+            <span class="phone-action-label">Snooze 15s</span>
+          </div>
+          <div class="phone-action-col">
+            <button class="phone-round-btn accept" id="answer-voice" aria-label="Accept call with voice and captions">
+              <svg width="26" height="26"><use href="#i-phone"/></svg>
+            </button>
+            <span class="phone-action-label">Accept</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="brief" aria-live="off">
+        <div class="phone-incall-head">
+          <span class="phone-incall-timer num" id="brief-timer">00:12</span>
+          <h2>Dana · <span id="brief-mode-label">Briefing</span></h2>
+          <p class="phone-incall-sub"><span class="dot-online"></span><span id="brief-conn">Connected · Live Captions</span></p>
+        </div>
+
+        <div class="mode-tabs"><div class="tabs phone-tabs" role="tablist" aria-label="Call type">
+          <button class="tab" role="tab" aria-selected="true" tabindex="0" data-mode="briefing">Briefing</button>
+          <button class="tab" role="tab" aria-selected="false" tabindex="-1" data-mode="help">Help</button>
+          <button class="tab" role="tab" aria-selected="false" tabindex="-1" data-mode="debrief">Debrief</button>
+        </div></div>
+
+        <div class="phone-transcript-box">
+          <div class="captions" id="captions" role="log" aria-live="polite" aria-label="Live captions"></div>
+          <div id="voice-banner" class="phone-voice-banner"></div>
+          <form class="compose phone-compose" id="compose">
+            <label for="msg" class="sr-only">Message Dana</label>
+            <input class="input phone-input" id="msg" placeholder="Type to Dana or ask a question…" autocomplete="off">
+            <button class="btn phone-send-btn" type="submit">Send</button>
+          </form>
+        </div>
+
+        <div class="phone-keypad-grid" role="group" aria-label="In-call controls">
+          <div class="phone-key-col">
+            <button class="phone-key-btn is-on" type="button" aria-pressed="true" aria-label="Speaker on">
+              <svg width="20" height="20"><use href="#i-speaker"/></svg>
+            </button>
+            <span>Speaker</span>
+          </div>
+          <div class="phone-key-col">
+            <button class="phone-key-btn" type="button" id="mic-toggle" aria-pressed="false">
+              <svg width="20" height="20"><use href="#i-mic"/></svg>
+            </button>
+            <span id="mic-label">Use Voice</span>
+          </div>
+          <div class="phone-key-col">
+            <button class="phone-key-btn" type="button" data-go="board" aria-label="Open incident board">
+              <svg width="20" height="20"><use href="#i-keypad"/></svg>
+            </button>
+            <span>Board</span>
+          </div>
+          <div class="phone-key-col">
+            <span class="wave" id="wave" hidden aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+          </div>
+          <div class="phone-key-col">
+            <button class="phone-round-btn decline end" type="button" data-go="board" aria-label="End call and open incident board">
+              <svg width="26" height="26"><use href="#i-hangup"/></svg>
+            </button>
+            <span>End & Open Board</span>
+          </div>
+          <div class="phone-key-col"></div>
+        </div>
+      </div>
+      <div class="phone-home-bar" aria-hidden="true"></div>
+    </div>
+  </div>
+</section>
+
+<!-- =============================== 4. NIGHT BOARD =============================== -->
+<section class="screen" id="screen-board" data-screen="board" aria-labelledby="board-title">
+  <div class="container">
+    <div class="board-top">
+      <div>
+        <span class="eyebrow">Night shift · ShopNorth checkout</span>
+        <h1 id="board-title">Checkout incident</h1>
+      </div>
+      <div class="board-badges">
+        <span class="badge badge-info"><svg><use href="#i-db"/></svg>Tiger Data · live hypertable</span>
+        <span class="badge badge-success" id="loyalty-badge"><svg><use href="#i-tag"/></svg>Loyalty discounts: ON</span>
+        <span class="badge num">Sim clock 02:05:12</span>
+      </div>
+    </div>
+    <div id="board-notice"></div>
+    <div class="card status-strip">
+      <div class="sev" style="background:var(--danger-bg);color:var(--danger)">P0</div>
+      <div><strong>Guest checkouts are failing during the flash sale.</strong><p class="muted" style="font-size:14px">Errors started at 01:50, three minutes after v2.14.0. Active version <b class="mono">v2.14.0</b>.</p></div>
+      <button class="btn" id="hint-btn"><svg width="16" height="16"><use href="#i-chat"/></svg>Ask Dana for a hint</button>
+    </div>
+
+    <div class="kpis" id="kpis"></div>
+    <div class="marker-legend" aria-hidden="true">
+      <span><i style="background:#94a3b8"></i>01:47 v2.14.0 deploy</span>
+      <span><i style="background:#b45309"></i>01:50 errors begin</span>
+      <span><i style="background:#b91c1c"></i>02:04 alert</span>
+    </div>
+    <details style="margin-top:8px;font-size:13.5px"><summary style="cursor:pointer;color:var(--ink-secondary)">Read chart values as a table</summary>
+      <table class="cmp-table" style="margin-top:8px"><thead><tr><th>Time</th><th>Error rate</th><th>Orders/min</th><th>p95</th></tr></thead>
+      <tbody><tr><td>01:45</td><td>0.4%</td><td>420</td><td>380 ms</td></tr><tr><td>01:50</td><td>18.6%</td><td>340</td><td>980 ms</td></tr><tr><td>02:04</td><td>31.2%</td><td>290</td><td>1,450 ms</td></tr></tbody></table>
+    </details>
+
+    <div class="board-grid">
+      <div class="card card-pad">
+        <div class="tabs" role="tablist" aria-label="Investigation" style="margin-bottom:14px">
+          <button class="tab" role="tab" aria-selected="true" tabindex="0" aria-controls="bt-logs" id="btab-logs">Logs <span class="badge badge-danger" style="padding:0 6px">12</span></button>
+          <button class="tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="bt-diff" id="btab-diff">Deploy diff</button>
+          <button class="tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="bt-run" id="btab-run">Runbook</button>
+        </div>
+        <div role="tabpanel" id="bt-logs" aria-labelledby="btab-logs">
+          <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap"><label class="sr-only" for="log-q">Search logs</label><input class="input" id="log-q" placeholder="Search logs, e.g. tier" style="flex:1;min-width:160px"><select class="input" style="width:auto" aria-label="Severity"><option>All severities</option><option>Errors</option></select></div>
+          <div class="log-list" id="log-list"></div>
+        </div>
+        <div role="tabpanel" id="bt-diff" aria-labelledby="btab-diff" hidden>
+          <div class="diff"><div class="diff-head"><span>checkout/pricing.py</span><span class="muted">v2.13.9 → v2.14.0 · 01:47</span></div><pre>
+<span class="l">  15  def loyalty_percent(customer):</span>
+<span class="l">  16      """Extra discount for loyalty members."""</span>
+<span class="l add">  17 +    # Add loyalty tier discounts</span>
+<span class="l add hot">  18 +    tier = customer.profile["tier"]</span>
+<span class="l add">  19 +    return DISCOUNTS[tier]</span>
+<span class="l del">  17 -    return 0</span></pre></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:10px;flex-wrap:wrap"><span class="muted" style="font-size:13.5px">Guest profiles have no <span class="mono">"tier"</span> key.</span><button class="pin-btn" data-pin="Line 18 reads profile[&quot;tier&quot;] without a default (v2.14.0)"><svg width="12" height="12" style="vertical-align:-1px"><use href="#i-pin"/></svg> Pin to evidence</button></div>
+        </div>
+        <div role="tabpanel" id="bt-run" aria-labelledby="btab-run" hidden>
+          <ol class="runbook"><li><b>Confirm impact.</b> Compare error rate and orders with the last hour.</li><li><b>Check recent changes.</b> A deploy within 30 minutes of the first error is the first suspect.</li><li><b>Mitigate first.</b> Roll back to the last good version if a deploy lines up.</li><li><b>Verify recovery.</b> Watch all three metrics return to baseline.</li><li><b>Hand off.</b> Record what happened, current state, what you tried and remaining risk.</li></ol>
+        </div>
+      </div>
+
+      <div class="board-side">
+        <div class="card card-pad">
+          <div class="card-head"><h3>Mitigation</h3><span class="badge badge-danger" id="mit-state">Broken</span></div>
+          <div class="action-list">
+            <button class="action-btn primary" id="rollback-open"><svg><use href="#i-undo"/></svg><strong>Roll back to v2.13.9</strong><span>Recovers in about 10 s · loyalty discounts turn off</span></button>
+            <button class="action-btn" data-try="restart"><svg><use href="#i-refresh"/></svg><strong>Restart checkout service</strong><span>Brief dip, then errors return</span></button>
+            <button class="action-btn" data-try="scale"><svg><use href="#i-scale"/></svg><strong>Scale up instances</strong><span>No effect on a code error</span></button>
+          </div>
+          <div id="try-result" aria-live="polite" style="margin-top:10px"></div>
+        </div>
+        <div class="card card-pad">
+          <div class="card-head"><h3>Shared team evidence</h3><span class="badge" id="ev-count">1</span></div>
+          <div id="evidence" style="display:grid;gap:8px">
+            <div class="evidence-item"><svg width="16" height="16" style="color:var(--accent);flex:none;margin-top:2px"><use href="#i-pin"/></svg><span><b>demo-b</b> · Errors begin at 01:50, three minutes after v2.14.0.</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="height:40px"></div>
+  </div>
+
+  <dialog id="rollback-dlg" aria-labelledby="rb-title">
+    <div class="dlg-body">
+      <span class="badge badge-warning" style="justify-self:start"><svg><use href="#i-alert"/></svg>Confirm mitigation</span>
+      <h2 id="rb-title">Roll back checkout to v2.13.9?</h2>
+      <p class="muted">This replaces v2.14.0 in production. You can redeploy a fix in the morning.</p>
+      <div class="tradeoff">
+        <div style="background:var(--success-bg);border-color:var(--success-border)"><b style="color:var(--success)">You gain</b>Checkout recovers in about 10 seconds.</div>
+        <div style="background:var(--warning-bg);border-color:var(--warning-border)"><b style="color:var(--warning)">You give up</b>Loyalty discounts turn off until the fix ships.</div>
+      </div>
+    </div>
+    <div class="dlg-foot"><button class="btn" id="rb-cancel">Cancel</button><button class="btn btn-danger" id="rb-confirm">Roll back to v2.13.9</button></div>
+  </dialog>
+</section>
+
+<!-- =============================== 5. HANDOFF =============================== -->
+<section class="screen" id="screen-handoff" data-screen="handoff" aria-labelledby="ho-title">
+  <div class="container">
+    <div class="board-top"><div><span class="eyebrow">Night shift · Stabilized</span><h1 id="ho-title">Hand off to the morning team</h1></div>
+      <div class="board-badges"><span class="badge badge-warning"><svg><use href="#i-tag"/></svg>Loyalty discounts: OFF</span><span class="badge mono">Active v2.13.9</span></div></div>
+    <div class="card recovered-banner">
+      <div class="ic"><svg><use href="#i-check"/></svg></div>
+      <div><strong>Checkout recovered at 02:06:10.</strong><p class="muted" style="font-size:14px">Error rate 31.2% → <b class="num" style="color:var(--success)">0.4%</b> · Orders 290 → <b class="num">418/min</b> · p95 1,450 → <b class="num">390 ms</b></p></div>
+      <span class="badge badge-success">Stabilized</span>
+    </div>
+    <div id="ho-notice"></div>
+    <form class="card card-pad" id="ho-form">
+      <div class="card-head"><h3>Shift handoff note</h3><span class="muted" style="font-size:13px" id="ho-saved">Draft saved locally</span></div>
+      <div class="handoff-grid">
+        <div class="field"><label for="h1">What happened</label><textarea class="input" id="h1" rows="3">Guest checkouts failed with KeyError: 'tier' after v2.14.0 shipped at 01:47.</textarea></div>
+        <div class="field"><label for="h2">Current state</label><textarea class="input" id="h2" rows="3">Rolled back to v2.13.9. Metrics at baseline. Loyalty discounts are off.</textarea></div>
+        <div class="field"><label for="h3">What was tried</label><textarea class="input" id="h3" rows="3">Restart (errors returned), then rollback (recovered in ~10 s).</textarea></div>
+        <div class="field"><label for="h4">Remaining risk</label><textarea class="input" id="h4" rows="3">pricing.py:18 still reads profile["tier"]. Needs a default and a guest regression test.</textarea></div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;flex-wrap:wrap">
+        <button class="btn" type="submit">Save handoff</button>
+        <button class="btn btn-primary" type="button" data-go="meeting" data-prefetch="/morning">Open the morning meeting <svg width="16" height="16"><use href="#i-arrow"/></svg></button>
+      </div>
+    </form>
+    <div style="height:40px"></div>
+  </div>
+</section>
+
+<!-- =============================== 6. MORNING MEETING =============================== -->
+<section class="screen" id="screen-meeting" data-screen="meeting" aria-labelledby="mt-title">
+  <div class="container">
+    <div class="board-top"><div><span class="eyebrow">Morning · 09:15 standup with Dana</span><h1 id="mt-title">Overnight handoff meeting</h1></div>
+      <div class="board-badges"><span class="badge"><svg><use href="#i-users"/></svg>Dana, demo-a, demo-b</span><span class="badge badge-info" id="mt-source">Team incident</span></div></div>
+    <div class="meeting-layout">
+      <div class="projector-wrap">
+        <div class="projector-label"><span class="eyebrow"><svg width="13" height="13" style="vertical-align:-2px"><use href="#i-eye"/></svg> Shared room screen · everyone sees this</span><span class="badge">office_project_screen_plane · 16:9</span></div>
+        <div class="projector" id="projector" aria-label="Shared projector view" role="img"></div>
+        <div class="seat-check"><span class="badge badge-success"><svg><use href="#i-check"/></svg>Readable from meeting seat 1</span><span>Smallest projected text 1.8% of width ≈ 24 px on a 1280 px seated render. No private rubric, roles or evidence.</span></div>
+      </div>
+      <div class="card mpanel" id="mpanel">
+        <div class="stepper" role="tablist" aria-label="Meeting beats" id="stepper">
+          <button class="step-pill" role="tab" data-beat="0"><i></i>1 · Overnight impact</button>
+          <button class="step-pill" role="tab" data-beat="1"><i></i>2 · Recovery & risk</button>
+          <button class="step-pill" role="tab" data-beat="2"><i></i>3 · Morning assignment</button>
+        </div>
+        <div class="mp-body" id="mp-body" aria-live="polite"></div>
+        <div class="mp-foot" id="mp-foot">
+          <button class="btn" id="mp-back">Back</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost" id="mp-skip" data-go="workstation">Skip to workstation</button><button class="btn btn-primary" id="mp-next">Next</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =============================== 7. WORKSTATION =============================== -->
+<section class="screen" id="screen-workstation" data-screen="workstation" aria-labelledby="ws-title">
+  <div class="container">
+    <div class="board-top"><div><span class="eyebrow">Morning · Workstation 1</span><h1 id="ws-title">Fix the checkout regression</h1></div>
+      <div class="tabs" role="tablist" aria-label="Your role" id="role-tabs">
+        <button class="tab" role="tab" aria-selected="true" tabindex="0" data-role="author">Author</button>
+        <button class="tab" role="tab" aria-selected="false" tabindex="-1" data-role="reviewer">Reviewer</button>
+        <button class="tab" role="tab" aria-selected="false" tabindex="-1" data-role="explore">Explore</button>
+      </div></div>
+    <div id="ws-notice"></div>
+    <div class="ws-layout">
+      <div class="card card-pad">
+        <div class="card-head"><h3>Your steps</h3><span class="badge" id="ws-role-badge">Author · demo-a</span></div>
+        <div class="flow" id="flow"></div>
+      </div>
+      <div style="display:grid;gap:16px;align-content:start">
+        <div class="card pr-card">
+          <div class="pr-head"><span class="state" id="pr-state"><svg width="14" height="14"><use href="#i-git"/></svg>Open</span><div><h3>fix: default loyalty tier for guests #42</h3><div class="sub mono" id="pr-sha">head 7c1e9ab · shopnorth-checkout</div></div></div>
+          <div class="checks" id="checks"></div>
+          <div class="pr-foot">
+            <button class="btn" id="verify-btn"><svg width="16" height="16"><use href="#i-refresh"/></svg>Verify on GitHub</button>
+            <button class="btn btn-success btn-lg" id="deploy-btn">Deploy fix</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <dialog id="deploy-dlg" aria-labelledby="dp-title">
+    <div class="dlg-body"><h2 id="dp-title">Deploy PR #42 to checkout?</h2><p class="muted">Deploys verified head <b class="mono">7c1e9ab</b>. Loyalty discounts turn back on for members; guests get no extra discount.</p></div>
+    <div class="dlg-foot"><button class="btn" id="dp-cancel">Cancel</button><button class="btn btn-success" id="dp-confirm">Deploy fix</button></div>
+  </dialog>
+</section>
+
+<!-- =============================== 8. AFTER =============================== -->
+<section class="screen" id="screen-after" data-screen="after" aria-labelledby="af-title">
+  <div class="container">
+    <div class="board-top"><div><span class="eyebrow">After the incident</span><h1 id="af-title">Debrief and evidence</h1></div>
+      <div class="board-badges"><span class="badge badge-success"><svg><use href="#i-check"/></svg>Fix deployed</span><span class="badge badge-success"><svg><use href="#i-tag"/></svg>Loyalty discounts: ON</span></div></div>
+    <div class="after-grid">
+      <div class="card card-pad">
+        <div class="card-head"><h3>Rubric</h3><span class="badge" id="rubric-state">Provisional</span></div>
+        <div class="score-total"><b class="num">18</b><span class="muted">/ 20</span></div>
+        <div id="rubric"></div>
+        <p class="muted" style="font-size:13px;margin-top:10px">Hints used: 2. Hints never lower a score.</p>
+      </div>
+      <div style="display:grid;gap:20px;align-content:start">
+        <div class="card card-pad">
+          <div class="card-head"><h3>Dana's debrief</h3><span class="badge badge-info">Captioned</span></div>
+          <div class="msg msg-dana"><span class="who">Dana</span>You matched the 01:47 deploy to the first errors and rolled back before checking every log. Next time, post the customer update before you start the rollback.</div>
+          <button class="btn" data-go="call" data-mode="debrief" style="margin-top:12px"><svg width="16" height="16"><use href="#i-phone"/></svg>Replay debrief call</button>
+        </div>
+        <div class="card card-pad">
+          <div class="card-head"><h3>Private evidence record</h3><span class="badge"><svg><use href="#i-lock"/></svg>Only you</span></div>
+          <dl class="kv"><dt>Time to mitigate</dt><dd>2 min 06 s</dd><dt>Before/after check</dt><dd>Rollback first → kept</dd><dt>PR #42</dt><dd>CI passed · reviewed · merged</dd><dt>Handoff rating</dt><dd>4 / 5</dd></dl>
+        </div>
+        <div class="card card-pad">
+          <div class="card-head"><h3>Connections</h3><span class="badge">Mutual opt-in</span></div>
+          <div class="conn"><div class="avatar" aria-hidden="true">N</div><div><b>Nova</b><p class="muted" style="font-size:13px">Your reviewer this morning</p></div><button class="btn" id="conn-btn" aria-pressed="false">Connect</button></div>
+          <p class="muted" style="font-size:12.5px;margin-top:8px">Names and links appear only when both people choose to connect.</p>
+        </div>
+        <div class="card card-pad">
+          <div class="card-head"><h3>Related roles</h3><span class="badge">P1 · Adzuna cache, 2026-11-07</span></div>
+          <div class="job"><b>Junior Site Reliability Engineer</b><span class="muted" style="font-size:13px">Calgary, AB · listing date 2026-11-05</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =============================== 9. HUD =============================== -->
+<section class="screen" id="screen-hud" data-screen="hud" aria-labelledby="hud-title">
+  <div class="container">
+    <div class="board-top"><div><span class="eyebrow">3D overlays</span><h1 id="hud-title">HUD, minimap and 2D fallback</h1></div></div>
+    <div class="hud-grid">
+      <div>
+        <div class="hud-stage" style="background-image:url('../../../../apps/web/public/world/bedroom-still.png')">
+          <div class="hud-top"><span class="hud-title">Bedroom · 2:04 a.m.</span><button class="btn hud-2d" data-go="call">Use 2D view</button></div>
+          <div class="hud-bottom"><button class="hud-pill" data-go="call"><kbd>E</kbd>Answer the phone</button></div>
+        </div>
+        <p class="muted" style="font-size:13.5px;margin-top:8px">Call card opens centered over the scene (not docked to the right edge).</p>
+      </div>
+      <div>
+        <div class="hud-stage" style="background-image:url('../../../../apps/web/public/world/office-still.png')">
+          <div class="hud-top">
+            <div class="minimap" aria-label="Minimap: you are in the hallway; Dana's room is west, desks are east">
+              <svg viewBox="0 0 160 110"><rect x="2" y="2" width="70" height="46" rx="4" fill="#1e3a8a" stroke="#60a5fa"/><text x="37" y="29" fill="#fff" font-size="10" text-anchor="middle" font-family="sans-serif">Dana</text>
+              <rect x="88" y="2" width="70" height="46" rx="4" fill="#334155" stroke="#64748b"/><text x="123" y="29" fill="#e2e8f0" font-size="10" text-anchor="middle" font-family="sans-serif">Desks</text>
+              <rect x="2" y="54" width="156" height="20" rx="3" fill="#1e293b"/><text x="80" y="68" fill="#cbd5e1" font-size="9" text-anchor="middle" font-family="sans-serif">Hallway</text>
+              <rect x="40" y="80" width="80" height="28" rx="3" fill="#1e293b"/><text x="80" y="98" fill="#cbd5e1" font-size="9" text-anchor="middle" font-family="sans-serif">Lobby</text>
+              <path d="M80 70 l-5 -8 h10z" fill="#fbbf24"/><circle cx="37" cy="40" r="3" fill="#fbbf24"/></svg>
+            </div>
+            <span class="hud-title">Office · morning</span><button class="btn hud-2d" data-go="meeting">Use 2D view</button>
+          </div>
+          <div class="hud-bottom"><button class="hud-pill" data-go="meeting"><kbd>E</kbd>Sit for Dana's briefing</button></div>
+        </div>
+        <p class="muted" style="font-size:13.5px;margin-top:8px">Minimap keeps rooms, doors and the player arrow in the upper left.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

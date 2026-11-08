@@ -76,22 +76,24 @@ async function sitCycle(page: Page, approach: string, seat: string, stand: strin
 }
 
 test("bedroom: call controls first, then the computer opens the same incident board", async ({ page }) => {
-  const errors = await open(page, "/night/3d?fixture=1&worldDebug=1");
-  await expect(page.getByRole("button", { name: "Answer Dana" })).toBeEnabled();
+  await page.goto("/");
+  await page.getByRole("link", { name: "Night", exact: true }).click();
+  await expect(page.locator(".world-canvas")).toBeVisible();
+  await page.getByRole("button", { name: "Start solo exercise" }).click();
+  await expect(page).toHaveURL(/\/night\/3d\?fixture=1&entry=[a-f0-9]{16}$/);
+  const entry = new URL(page.url());
+  entry.searchParams.set("worldDebug", "1");
+  entry.searchParams.set("noIntro", "1");
+  const errors = await open(page, entry.pathname + entry.search);
+  await expect(page.getByRole("button", { name: "Accept" })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Snooze" })).toBeEnabled();
-  await expect(page.getByText("02:04", { exact: false }).first()).toBeVisible();
-  expect((await pose(page)).mode).toBe("fixed");
-  await page.waitForTimeout(800);
   await shot(page, "bedroom-spawn-call");
   await page.getByRole("button", { name: "Snooze" }).click();
-  await expect(page.getByText("Page snoozed", { exact: false })).toBeVisible();
-  await page.getByRole("button", { name: "Answer Dana" }).click();
-  await expect(page.getByRole("heading", { name: "Dana’s briefing" })).toBeFocused();
-  await page.getByRole("textbox", { name: "Message Dana" }).fill("What changed?");
-  await page.getByRole("button", { name: "Send" }).click();
-  await expect(page.getByRole("log", { name: "Dana captions" })).toContainText("A release went out at 01:47");
-  await shot(page, "bedroom-briefing-captions");
-  await page.getByRole("button", { name: "Continue to dashboard" }).click();
+  await expect(page.getByText("Snoozed", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "Accept" }).click();
+  await expect(page.getByRole("timer")).toBeVisible();
+  await page.getByRole("button", { name: "End", exact: true }).click();
+  await page.evaluate(async () => { const w = (window as unknown as { __world: { callPhase: string; mode: string; standUp(): void } }).__world; while (w.callPhase !== "idle" || w.mode !== "seated") await new Promise(r => setTimeout(r, 40)); w.standUp(); while ((w.mode as string) !== "walk") await new Promise(r => setTimeout(r, 40)); });
   await waitMode(page, "walk");
   await expect(page.locator(".world-panel")).toBeHidden();
   await expect(page.locator("canvas")).toBeFocused();
@@ -102,9 +104,9 @@ test("bedroom: call controls first, then the computer opens the same incident bo
 
   // Bed and wall stop the player.
   await page.locator("canvas").focus();
-  await teleport(page, -0.3, -0.7, -3, -0.7);
+  await teleport(page, 0.5, -0.1, -3, -0.1);
   await hold(page, "w", 900);
-  expect((await pose(page)).x).toBeGreaterThanOrEqual(-0.826 + R - 0.02);
+  expect((await pose(page)).x).toBeGreaterThanOrEqual(-0.2 + R - 0.02);
 
   await sitCycle(page, "chair_bedroom_desk_approach", "chair_bedroom_desk_seat_anchor", "chair_bedroom_desk_stand_anchor", "computer", "Incident board");
   await sitCycle(page, "chair_bedroom_desk_approach", "chair_bedroom_desk_seat_anchor", "chair_bedroom_desk_stand_anchor", "computer", "Incident board");
@@ -121,11 +123,21 @@ test("bedroom: call controls first, then the computer opens the same incident bo
   await waitMode(page, "seated");
   await page.getByRole("button", { name: "Open the panel again" }).click();
   await expect(page.getByText("Recovered", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Back to the room" }).click();
+  await page.evaluate(() => {
+    const key = "incident-lab.fixture-entry.v1";
+    localStorage.removeItem(key);
+    window.dispatchEvent(new StorageEvent("storage", { key }));
+  });
+  await expect(page.getByRole("heading", { name: "Saved exercise unavailable" })).toBeVisible();
   expect(errors).toEqual([]);
 });
 
 test("office: collision, doors, minimap, briefing, and both desks", async ({ page }) => {
-  const errors = await open(page, "/morning/3d?fixture=1&worldDebug=1");
+  await page.goto("/");
+  await page.getByRole("link", { name: "Morning", exact: true }).click();
+  await expect(page).toHaveURL("/morning/3d");
+  const errors = await open(page, "/morning/3d?worldDebug=1");
   await page.waitForTimeout(800);
   await shot(page, "office-spawn");
   const start = await pose(page);
@@ -254,20 +266,12 @@ test("pointer lock, keyboard focus, and E on the phone", async ({ page }) => {
   await page.keyboard.press("e");
   await expect(page.getByRole("button", { name: "Back to the room" })).toBeFocused({ timeout: 8000 });
   expect(await locked()).toBe(null);
-
-  await page.goto("/night/3d?fixture=1&worldDebug=1");
-  await expect.poll(() => page.evaluate(() => Boolean(window.__world?.rects?.length)), { timeout: 30_000 }).toBe(true);
-  await expect(page.locator("canvas")).toBeFocused();
-  await page.keyboard.press("e");
-  await expect(page.getByRole("button", { name: "Answer Dana" })).toBeFocused();
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("heading", { name: "Dana’s briefing" })).toBeFocused();
 });
 
 test("frame times and transfer on the walking route", async ({ page }) => {
   const results: Record<string, unknown> = {};
   for (const [scene, url, routeSteps] of [
-    ["bedroom", "/night/3d?fixture=1&worldDebug=1", 0],
+    ["bedroom", "/night/3d?fixture=1&worldDebug=1&noIntro=1", 0],
     ["office", "/morning/3d?fixture=1&worldDebug=1", 1],
   ] as const) {
     const started = Date.now();
@@ -315,15 +319,12 @@ test.describe("fallbacks", () => {
     await expect(page.getByRole("button", { name: "Answer Dana" })).toBeEnabled();
   });
 
-  test("the in-scene 2D switch keeps progress", async ({ page }) => {
-    await open(page, "/night/3d?fixture=1&worldDebug=1");
-    await page.getByRole("button", { name: "Answer Dana" }).click();
-    await expect(page.getByRole("heading", { name: "Dana’s briefing" })).toBeFocused();
-    await page.getByRole("button", { name: "Use 2D view" }).click();
-    await expect(page.getByRole("heading", { name: "Dana’s briefing" })).toBeVisible();
-    await page.getByRole("button", { name: "Return to 3D" }).click();
+  test("the briefing stays on the handset without a view switch", async ({ page }) => {
+    await open(page, "/night/3d?fixture=1&worldDebug=1&noIntro=1");
+    await page.getByRole("button", { name: "Accept" }).click();
+    await expect(page.locator(".world-phone").getByRole("timer")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Use 2D view" })).toHaveCount(0);
     await expect(page.locator("canvas")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Dana’s briefing" })).toBeVisible();
   });
 });
 
@@ -335,9 +336,9 @@ test.describe("reduced motion and small screens", () => {
     await page.keyboard.press("e");
     expect(await page.evaluate(() => window.__world.activeRects().filter(r => r.name.startsWith("DOOR_office")).length)).toBe(0);
     await shot(page, "office-mobile");
-    await open(page, "/night/3d?fixture=1&worldDebug=1");
+    await open(page, "/night/3d?fixture=1&worldDebug=1&noIntro=1");
     await page.waitForTimeout(400);
-    const answer = page.getByRole("button", { name: "Answer Dana" });
+    const answer = page.getByRole("button", { name: "Accept" });
     await expect(answer).toBeInViewport();
     await shot(page, "bedroom-mobile");
   });
