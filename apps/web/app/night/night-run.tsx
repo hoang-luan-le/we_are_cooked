@@ -10,7 +10,6 @@ import { fixtureCohort, type FixtureEntry, levels, updateFixtureEntry } from "./
 import { IncidentBoard } from "./incident-board";
 import { NightHandoff } from "./night-handoff";
 import { TeamEvidence } from "./team-evidence";
-import { ViewSwitch } from "../world/view-switch";
 import { type NightAction, useNightApi } from "./use-night-api";
 
 type SupportCall = Exclude<DanaCall, "briefing">;
@@ -25,7 +24,11 @@ export type NightCallView = {
   briefing: ReturnType<typeof useDanaBriefing>;
 };
 
-export function NightRun({ apiUser, relayBase, entry, incidentId, onStage, renderCall }: { apiUser?: string; relayBase?: string; entry?: FixtureEntry; incidentId?: string; onStage?: (stage: NightStage) => void; renderCall?: (call: NightCallView) => ReactNode }) {
+export function NightRun({ apiUser, relayBase, entry, incidentId, onStage, renderCall, morningPath = "/morning" }: {
+  apiUser?: string; relayBase?: string; entry?: FixtureEntry; incidentId?: string;
+  onStage?: (stage: NightStage) => void; renderCall?: (call: NightCallView) => ReactNode;
+  morningPath?: "/morning" | "/morning/3d";
+}) {
   const [stage, setStage] = useState<"page" | "briefing" | "board">(entry?.briefingPending ? "briefing" : entry?.answered ? "board" : "page");
   const [answerPending, setAnswerPending] = useState(false);
   const [snoozed, setSnoozed] = useState(false);
@@ -190,12 +193,11 @@ export function NightRun({ apiUser, relayBase, entry, incidentId, onStage, rende
       <header className="app-header">
         <Link href={entry || incidentId ? "/start" : "/"}>Incident Lab</Link>
         <span className="badge fixture">{apiUser ? "Local demo API" : "Development fixture"}</span>
-        <ViewSwitch shift="night" incidentId={incidentId} />
       </header>
       <main className={visibleStage === "board" ? "workspace" : "call-layout"}>
         {entry ? (
           <section className="panel entry-section entry-context" aria-label="Saved practice exercise">
-            <p><strong>{levels[entry.level].title}</strong> · {cohortRole ?? "Solo Night 2D"}</p>
+            <p><strong>{levels[entry.level].title}</strong> · {cohortRole ?? "Solo Night shift"}</p>
             {entry.kind === "cohort" ? (
               <details>
                 <summary>Rehearsal cohort members</summary>
@@ -225,7 +227,7 @@ export function NightRun({ apiUser, relayBase, entry, incidentId, onStage, rende
               <button onClick={api.refresh}>Refresh incident</button>
               {api.retryAction ? <button disabled={api.pending} onClick={() => api.retryAction && void perform(api.retryAction)}>Retry last action</button> : null}
               {api.readError && incidentId ? <Link className="button" href="/start">Back to simulation entry</Link> : null}
-              {api.readError ? <Link className="button" href="/night?fixture=1">Use development fixture</Link> : null}
+              {api.readError ? <Link className="button" href="/night/3d?fixture=1">Use development fixture</Link> : null}
             </div>
           </div>
         ) : null}
@@ -303,7 +305,7 @@ export function NightRun({ apiUser, relayBase, entry, incidentId, onStage, rende
               </form>
             ) : null}
             {incidentId && incident?.handoff ? <Link className="button primary phase-link"
-              href={`/morning?incident=${encodeURIComponent(incidentId)}`}>Open Morning workspace</Link> : null}
+              href={`${morningPath}?incident=${encodeURIComponent(incidentId)}`}>Open Morning workspace</Link> : null}
           </>
         )}
       </main>

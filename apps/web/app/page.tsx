@@ -11,7 +11,10 @@ export default function Home() {
         <p className="eyebrow">Incident Lab · On-call simulation</p>
         <h1 id="landing-title">Your first on-call shift starts at 02:04.</h1>
         <p>Checkout is failing during a flash sale. Answer Dana, investigate the release, and bring the service back.</p>
-        <Link className="button primary" href="/start">Start simulation <span aria-hidden="true">→</span></Link>
+        <nav className="actions" aria-label="Choose a shift">
+          <Link className="button primary" href="/start">Night <span aria-hidden="true">→</span></Link>
+          <Link className="button" href="/morning/3d">Morning <span aria-hidden="true">→</span></Link>
+        </nav>
       </section>
       <section className="panel landing-preview" aria-labelledby="preview-title">
         <div className="section-title">

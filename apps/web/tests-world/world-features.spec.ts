@@ -483,13 +483,15 @@ for (const [scene, url, id, chair] of [
 test("reopening releases the WebGL context", async ({ page }) => {
   const warnings: string[] = [];
   page.on("console", m => { if (/too many active webgl/i.test(m.text())) warnings.push(m.text()); });
-  await open(page, "/morning/3d?fixture=1&worldDebug=1");
+  await page.goto("/");
   for (let i = 0; i < 25; i++) {
-    await page.getByRole("button", { name: "Use 2D view" }).click();
+    await page.getByRole("link", { name: "Night", exact: true }).click();
+    await expect(page).toHaveURL("/start");
+    await expect(page.getByText("Loading the 3D scene…")).toHaveCount(0, { timeout: 30_000 });
+    await expect(page.locator("canvas")).toBeVisible();
+    await page.getByRole("link", { name: "Incident Lab", exact: true }).click();
+    await expect(page).toHaveURL("/");
     await expect(page.locator("canvas")).toHaveCount(0);
-    await page.evaluate(() => { (window as unknown as { __world?: unknown }).__world = undefined; });
-    await page.getByRole("button", { name: "Return to 3D" }).click();
-    await expect.poll(() => page.evaluate(() => Boolean(window.__world?.rects?.length)), { timeout: 30_000 }).toBe(true);
   }
   expect(warnings).toEqual([]);
 });

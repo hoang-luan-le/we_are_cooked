@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { DemoConfig } from "../night/demo-config";
-import { isTeamIncidentId } from "../night/team-entry-contract";
+import { isTeamIncidentId, teamIncidentHref } from "../night/team-entry-contract";
 import { AutoRefresh } from "./auto-refresh";
 
 type Config = DemoConfig;
@@ -86,7 +86,7 @@ export async function HandedToYou({ config, base }: { config: Config; base: "/mo
               <li key={row.incident_id} className="panel">
                 <p><strong>Incident {row.incident_id}</strong> · {row.level} · {roleLabel[row.role]}</p>
                 <p>{row.next_step ?? "Waiting for the Night pair's handoff."}</p>
-                <Link className="button" href={`/night?incident=${encodeURIComponent(row.incident_id)}`}>Open Night board</Link>
+                <Link className="button" href={teamIncidentHref(row.incident_id)}>Open Night board</Link>
               </li>
             ))}
           </ul>

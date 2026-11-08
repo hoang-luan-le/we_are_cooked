@@ -5,7 +5,9 @@ import { type ReactNode, useEffect, useState } from "react";
 import { type FixtureEntry, readFixtureEntry, watchFixtureEntry } from "./fixture-entry";
 import { type NightCallView, NightRun, type NightStage } from "./night-run";
 
-export function FixtureNight({ entryId, onStage, renderCall }: { entryId: string; onStage?: (stage: NightStage) => void; renderCall?: (call: NightCallView) => ReactNode }) {
+export function FixtureNight({ entryId, onStage, renderCall }: {
+  entryId: string; onStage?: (stage: NightStage | undefined) => void; renderCall?: (call: NightCallView) => ReactNode;
+}) {
   const [entry, setEntry] = useState<FixtureEntry | null | undefined>();
 
   useEffect(() => {
@@ -16,6 +18,10 @@ export function FixtureNight({ entryId, onStage, renderCall }: { entryId: string
     refresh();
     return watchFixtureEntry(refresh);
   }, [entryId]);
+
+  useEffect(() => {
+    if (!entry) onStage?.(undefined);
+  }, [entry, onStage]);
 
   if (entry === undefined) return <main className="call-layout"><p role="status">Opening your saved exercise…</p></main>;
   if (!entry) return (
