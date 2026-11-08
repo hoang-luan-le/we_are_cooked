@@ -3,6 +3,7 @@ import type { IncidentState } from "../../../packages/contracts/types";
 
 const api = process.env.NIGHT_TEST_API_ORIGIN;
 const teamEntry = process.env.NIGHT_TEST_TEAM_ENTRY === "1";
+const savedKey = "incident-lab.team-entry.v1.demo-a.incident";
 
 test("joins a real cohort, starts a selected team, and resumes the same incident", async ({ page, request }) => {
   test.skip(!api || !teamEntry, "Start the team backend and opt into the team entry test.");
@@ -50,7 +51,6 @@ test("joins a real cohort, starts a selected team, and resumes the same incident
   const otherId = (await other.json()).incident_id;
   const outsider = await page.request.get(`/api/night?incident=${otherId}`);
   expect(outsider.status()).toBe(404);
-  const savedKey = "incident-lab.team-entry.v1.demo-a.incident";
   await page.evaluate(({ savedKey, otherId }) => localStorage.setItem(savedKey, otherId), { savedKey, otherId });
   await page.goto("/start");
   await expect(page.getByText("The saved incident is unavailable.", { exact: false })).toBeVisible();
@@ -64,3 +64,159 @@ test("joins a real cohort, starts a selected team, and resumes the same incident
   await expect(page.getByRole("link", { name: "Resume API incident" })).toBeVisible();
   expect(await page.evaluate(key => localStorage.getItem(key), savedKey)).toBe(id);
 });
+
+for (const operation of ["Join", "failed Start"] as const) {
+  test(`keeps the saved Resume link when validation completes during ${operation}`, async ({ page, request }) => {
+    test.skip(!api || !teamEntry, "Start the team backend and opt into the team entry test.");
+    const created = await request.post(`${api}/api/incident/start`, {
+      headers: { "X-Demo-User": "demo-a" }, data: { level: "explore" },
+    });
+    expect(created.status()).toBe(201);
+    const { incident_id: id }: IncidentState = await created.json();
+    await page.addInitScript(({ key, value }) => localStorage.setItem(key, value), { key: savedKey, value: id });
+
+    const allowLookup = Promise.withResolvers<void>();
+    const allowSubmission = Promise.withResolvers<void>();
+    await page.route(`**/api/night?incident=${id}`, async route => {
+      await allowLookup.promise;
+      await route.continue();
+    });
+    await page.route("**/api/night/entry", async route => {
+      await allowSubmission.promise;
+      if (operation === "Join") await route.continue();
+      else await route.fulfill({ status: 503 });
+    });
+
+    try {
+      await page.goto("/start");
+      if (operation === "Join") {
+        const cohort = await request.post(`${api}/api/cohorts`, {
+          headers: { "X-Demo-User": "demo-b" }, data: { name: "Resume race cohort" },
+        });
+        expect(cohort.status()).toBe(201);
+        const { join_code: code } = await cohort.json();
+        await page.getByRole("textbox", { name: "Team cohort code" }).fill(code);
+        await page.getByRole("button", { name: "Join team cohort" }).click();
+      } else {
+        await page.getByRole("button", { name: "Start solo incident" }).click();
+      }
+      await expect(page.getByRole("button", { name: "Working…" })).toBeDisabled();
+      const resume = page.getByRole("link", { name: "Resume API incident" });
+      allowLookup.resolve();
+      await expect(resume).toHaveAttribute("href", `/night?incident=${id}`);
+      await expect(page.getByRole("button", { name: "Working…" })).toBeDisabled();
+
+      allowSubmission.resolve();
+      if (operation === "Join") {
+        await expect(page.getByRole("group", { name: "Resume race cohort members" })).toBeVisible();
+      } else {
+        await expect(page.getByRole("alert").filter({ hasText: "The API did not confirm the start." })).toBeVisible();
+      }
+      await expect(resume).toHaveAttribute("href", `/night?incident=${id}`);
+      expect(await page.evaluate(key => localStorage.getItem(key), savedKey)).toBe(id);
+    } finally {
+      allowLookup.resolve();
+      allowSubmission.resolve();
+    }
+  });
+}
+
+test("cancels older validation when Start creates a replacement incident", async ({ page, request }) => {
+  test.skip(!api || !teamEntry, "Start the team backend and opt into the team entry test.");
+  const created = await request.post(`${api}/api/incident/start`, {
+    headers: { "X-Demo-User": "demo-a" }, data: { level: "explore" },
+  });
+  expect(created.status()).toBe(201);
+  const { incident_id: id }: IncidentState = await created.json();
+  await page.addInitScript(({ key, value }) => {
+    localStorage.setItem(key, value);
+    const setItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (storageKey, item) {
+      if (storageKey === key) throw new DOMException("Blocked storage", "QuotaExceededError");
+      setItem.call(this, storageKey, item);
+    };
+  }, { key: savedKey, value: id });
+
+  const release = Promise.withResolvers<void>();
+  const lookupStarted = Promise.withResolvers<void>();
+  await page.route(`**/api/night?incident=${id}`, async route => {
+    lookupStarted.resolve();
+    await release.promise;
+    await route.fulfill({ status: 503 });
+  });
+  try {
+    await page.goto("/start");
+    await lookupStarted.promise;
+    const aborted = page.waitForEvent("requestfailed", req => new URL(req.url()).searchParams.get("incident") === id);
+    const started = page.waitForResponse(res => res.url().endsWith("/api/night/entry") && res.status() === 201);
+    await page.getByRole("button", { name: "Start solo incident" }).click();
+    const { id: replacement } = await (await started).json();
+    expect(replacement).not.toBe(id);
+    await expect(page.getByRole("link", { name: "Resume API incident" })).toHaveAttribute("href", `/night?incident=${replacement}`);
+    await expect(page.getByText(/This browser could not save an entry link/)).toBeVisible();
+    await expect(page).toHaveURL("/start");
+    await aborted;
+    await expect(page.getByText(/The saved incident could not be checked/)).toHaveCount(0);
+  } finally {
+    release.resolve();
+  }
+});
+
+test("validates a replacement Resume link and clears it across tabs", async ({ page, context }) => {
+  test.skip(!api || !teamEntry, "Start the team backend and opt into the team entry test.");
+  const start = page.getByRole("button", { name: "Start solo incident" });
+  const incoming = page.getByRole("heading", { name: "Dana is calling." });
+  await page.goto("/start");
+  await start.click();
+  await expect(incoming).toBeVisible();
+  const originalPath = new URL(page.url()).pathname + new URL(page.url()).search;
+
+  const entry = await context.newPage();
+  await entry.goto("/start");
+  const resume = entry.getByRole("link", { name: "Resume API incident" });
+  await expect(resume).toHaveAttribute("href", originalPath);
+
+  const validateReplacement = Promise.withResolvers<void>();
+  await entry.route("**/api/night?incident=*", async route => {
+    await validateReplacement.promise;
+    await route.continue();
+  });
+  try {
+    await page.getByRole("link", { name: "Incident Lab" }).click();
+    await start.click();
+    await expect(incoming).toBeVisible();
+    const replacementPath = new URL(page.url()).pathname + new URL(page.url()).search;
+    expect(replacementPath).not.toBe(originalPath);
+    await expect(resume).toHaveCount(0);
+
+    validateReplacement.resolve();
+    await expect(resume).toHaveAttribute("href", replacementPath);
+    await page.evaluate(key => localStorage.removeItem(key), savedKey);
+    await expect(resume).toHaveCount(0);
+    await expect(entry.getByRole("button", { name: "Start solo incident" })).toBeEnabled();
+  } finally {
+    validateReplacement.resolve();
+  }
+});
+
+for (const status of [401, 403]) {
+  test(`hides Resume when saved-incident validation returns ${status}`, async ({ page }) => {
+    test.skip(!api || !teamEntry, "Start the team backend and opt into the team entry test.");
+    const id = "inc_12345678";
+    await page.addInitScript(({ key, value, blockRemoval }) => {
+      localStorage.setItem(key, value);
+      if (blockRemoval) {
+        const removeItem = Storage.prototype.removeItem;
+        Storage.prototype.removeItem = function (name) {
+          if (name === key) throw new DOMException("Blocked storage", "SecurityError");
+          removeItem.call(this, name);
+        };
+      }
+    }, { key: savedKey, value: id, blockRemoval: status === 403 });
+    await page.route(`**/api/night?incident=${id}`, route => route.fulfill({ status }));
+    await page.goto("/start");
+    await expect(page.getByText(/The saved incident is unavailable/)).toBeVisible();
+    await expect(page.getByRole("link", { name: "Resume API incident" })).toHaveCount(0);
+    expect(await page.evaluate(key => localStorage.getItem(key), savedKey)).toBe(status === 403 ? id : null);
+  });
+}

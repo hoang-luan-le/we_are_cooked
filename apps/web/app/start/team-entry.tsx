@@ -21,40 +21,67 @@ export function TeamEntry({ user, level }: { user: string; level: Level }) {
   const [resumeNotice, setResumeNotice] = useState("");
   const [rosterRefresh, setRosterRefresh] = useState<{ id: string }>();
   const [saveError, setSaveError] = useState(false);
+  const resumeLookup = useRef<AbortController>(null);
   const rosterLookup = useRef<AbortController>(null);
   const submission = useRef<AbortController>(null);
 
   useEffect(() => {
-    let savedIncident: string | null;
-    try {
-      savedIncident = localStorage.getItem(incidentKey);
-    } catch {
-      setSaveError(true);
-      return;
-    }
-    if (!isTeamIncidentId(savedIncident)) return;
-    const id = savedIncident;
-    const controller = new AbortController();
-    function showUnverifiedLink() {
-      if (controller.signal.aborted || submission.current) return;
-      setIncidentId(current => current ?? id);
-      setResumeNotice("The saved incident could not be checked. You can still try its link.");
-    }
-    void fetch(`/api/night?incident=${id}`, { signal: controller.signal, cache: "no-store" })
-      .then(response => {
-        if (controller.signal.aborted || submission.current) return;
-        if (response.ok) {
-          setIncidentId(current => current ?? id);
-        } else if (response.status === 404) {
-          if (localStorage.getItem(incidentKey) === savedIncident) {
-            localStorage.removeItem(incidentKey);
+    function validateSavedIncident() {
+      resumeLookup.current?.abort();
+      setResumeNotice("");
+      let id: string | null;
+      try {
+        id = localStorage.getItem(incidentKey);
+      } catch {
+        setIncidentId(undefined);
+        setSaveError(true);
+        return;
+      }
+      setIncidentId(current => current === id ? current : undefined);
+      if (!isTeamIncidentId(id)) return;
+      const savedId = id;
+
+      const controller = new AbortController();
+      resumeLookup.current = controller;
+      function showUnverifiedLink() {
+        if (controller.signal.aborted) return;
+        setIncidentId(savedId);
+        setResumeNotice("The saved incident could not be checked. You can still try its link.");
+      }
+      void fetch(`/api/night?incident=${savedId}`, { signal: controller.signal, cache: "no-store" })
+        .then(response => {
+          if (controller.signal.aborted) return;
+          if (response.ok) {
+            setIncidentId(savedId);
+          } else if ([401, 403, 404].includes(response.status)) {
+            setIncidentId(undefined);
             setResumeNotice("The saved incident is unavailable. Start a new incident to continue.");
+            try {
+              if (localStorage.getItem(incidentKey) === savedId) localStorage.removeItem(incidentKey);
+            } catch {
+              // The denied link stays hidden even if the browser cannot clear storage.
+            }
+          } else {
+            showUnverifiedLink();
           }
-        } else {
-          showUnverifiedLink();
-        }
-      }).catch(showUnverifiedLink);
-    return () => controller.abort();
+        }, showUnverifiedLink);
+    }
+
+    function onStorage(event: StorageEvent) {
+      if (event.key === incidentKey || event.key === null) validateSavedIncident();
+    }
+    function onPageShow(event: PageTransitionEvent) {
+      if (event.persisted) validateSavedIncident();
+    }
+
+    validateSavedIncident();
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("pageshow", onPageShow);
+    return () => {
+      resumeLookup.current?.abort();
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("pageshow", onPageShow);
+    };
   }, [incidentKey]);
 
   useEffect(() => {
@@ -127,6 +154,8 @@ export function TeamEntry({ user, level }: { user: string; level: Level }) {
         remember(cohortKey, roster.id);
       } else {
         const { id } = await response.json();
+        // A confirmed Start replaces the saved incident. Join leaves it valid.
+        resumeLookup.current?.abort();
         setIncidentId(id);
         setResumeNotice("");
         if (remember(incidentKey, id)) {

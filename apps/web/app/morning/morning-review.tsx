@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import type { Handoff, HandoffRatingRequest } from "../../../../packages/contracts/types";
+import type { Handoff, HandoffRatingRequest, PullRequestInfo } from "../../../../packages/contracts/types";
 import type { NightIncident } from "../night/use-night-api";
 import { githubPullUrl } from "./morning-contract";
 import { useMorningWrite } from "./use-morning-api";
@@ -72,16 +72,20 @@ export function MorningReview({ incident, unavailable, onChange, onDeploy }: {
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [deployTarget, setDeployTarget] = useState<PullRequestInfo>();
+  const heading = useRef<HTMLHeadingElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const pr = incident.pr;
   const verifiedUrl = pr ? githubPullUrl(pr.url) : undefined;
   const candidate = githubPullUrl(url.trim());
-  const canDeploy = Boolean(pr && incident.allowed_actions.includes("deploy_fix"));
+  const deployAllowed = incident.allowed_actions.includes("deploy_fix");
+  const canDeploy = Boolean(pr?.substantive_review && deployAllowed);
+  const deployChanged = deployTarget && (!canDeploy || pr?.url !== deployTarget.url || pr?.head_sha !== deployTarget.head_sha);
   const fixed = incident.status === "fixed";
 
   return (
     <section className="panel phase-panel" aria-labelledby="morning-review">
-      <h2 id="morning-review">Verify the checkout fix</h2>
+      <h2 id="morning-review" ref={heading} tabIndex={-1}>Verify the checkout fix</h2>
       <p>Reproduce the guest checkout failure, add a regression test, and open the fix in GitHub for your teammate to review.</p>
       {incident.level === "explore" ? <PracticeReview /> : null}
       {!fixed ? <form className="entry-section" onSubmit={async event => {
@@ -129,20 +133,29 @@ export function MorningReview({ incident, unavailable, onChange, onDeploy }: {
         </>
       ) : <p className="muted">No GitHub pull request has been verified for this incident.</p>}
       {fixed ? <p className="badge success">Fix deployed · Discounts {incident.loyalty_discounts}</p> : null}
-      {canDeploy ? <>
-        <button className="primary" disabled={unavailable || busy} onClick={() => dialog.current?.showModal()}>Deploy fix</button>
-        <dialog ref={dialog} aria-labelledby="deploy-title">
-          <h2 id="deploy-title">Deploy the fix from PR #{pr?.number}?</h2>
-          <p>This deploys the verified merged fix in the simulation and turns loyalty discounts back on.</p>
-          <div className="actions">
-            <button onClick={() => dialog.current?.close()}>Cancel</button>
-            <button className="primary" disabled={unavailable || busy} onClick={() => {
-              dialog.current?.close();
-              if (canDeploy && !unavailable && !busy) void onDeploy();
-            }}>Confirm deploy</button>
-          </div>
-        </dialog>
-      </> : null}
+      {pr && deployAllowed && !pr.substantive_review ? <p className="notice">A substantive independent review is required before deployment.</p> : null}
+      {pr && canDeploy ? (
+        <button className="primary" disabled={unavailable || busy} onClick={() => {
+          setDeployTarget(pr);
+          dialog.current?.showModal();
+        }}>Deploy fix</button>
+      ) : null}
+      <dialog ref={dialog} aria-labelledby="deploy-title" onClose={() => {
+        setDeployTarget(undefined);
+        if (!canDeploy) heading.current?.focus();
+      }}>
+        <h2 id="deploy-title">Deploy the fix from PR #{deployTarget?.number}?</h2>
+        <p>This deploys the verified merged fix in the simulation and turns loyalty discounts back on.</p>
+        {deployChanged ? <p className="notice" role="alert">The PR changed or is no longer eligible. Close this dialog and check the latest verification.</p> : null}
+        <div className="actions">
+          <button onClick={() => dialog.current?.close()}>Cancel</button>
+          <button className="primary" disabled={!deployTarget || deployChanged || unavailable || busy} onClick={() => {
+            if (!deployTarget || deployChanged || unavailable || busy) return;
+            dialog.current?.close();
+            void onDeploy();
+          }}>Confirm deploy</button>
+        </div>
+      </dialog>
     </section>
   );
 }

@@ -220,7 +220,10 @@ export function NightRun({ apiUser, relayBase, entry, incidentId }: { apiUser?: 
               <button disabled={callSnoozed || api.pending || api.readError || (incident && !incident.allowed_actions.includes("snooze"))}
                 onClick={() => void perform({ action: "snooze" })}>Snooze</button>
               {api.retryAction?.action === "answer" && incident?.phase !== "paged" ? (
-                <button onClick={() => setStage("board")}>Open incident without briefing</button>
+                <button disabled={api.pending} onClick={() => {
+                  api.dismissAnswerRetry();
+                  setStage("board");
+                }}>Open incident without briefing</button>
               ) : null}
             </div>
           </section>
