@@ -1,0 +1,25 @@
+{
+  "incident_id": "inc_demo",
+  "level": "explore",
+  "phase": "paged",
+  "sim_clock": "02:04",
+  "impact": {
+    "error_rate": 31.2,
+    "orders_per_min": 290,
+    "p95_ms": 1450,
+    "baseline": { "error_rate": 0.4, "orders_per_min": 420, "p95_ms": 380 }
+  },
+  "dana_knows": [
+    { "topic": "alert", "text": "The checkout error-rate alert fired at 2:04 a.m." },
+    { "topic": "impact", "text": "About a third of checkouts are failing, in the middle of the flash sale." },
+    { "topic": "changes tonight", "text": "The team shipped a release, v2.14.0, at 1:47 a.m. I don't know what was in it." },
+    { "topic": "other alerts", "text": "There's also a high CPU warning on search-service." }
+  ],
+  "unlocked": [],
+  "facts": [],
+  "actions_taken": [],
+  "hint_calls": 0,
+  "status": "broken",
+  "handoff": null,
+  "rubric": null
+}
