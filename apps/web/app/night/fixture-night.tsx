@@ -2,15 +2,19 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { type FixtureEntry, readFixtureEntry } from "./fixture-entry";
+import { type FixtureEntry, readFixtureEntry, watchFixtureEntry } from "./fixture-entry";
 import { NightRun } from "./night-run";
 
 export function FixtureNight({ entryId }: { entryId: string }) {
   const [entry, setEntry] = useState<FixtureEntry | null | undefined>();
 
   useEffect(() => {
-    const saved = readFixtureEntry();
-    setEntry(saved?.id === entryId ? saved : null);
+    function refresh() {
+      const saved = readFixtureEntry();
+      setEntry(current => saved?.id === entryId ? current ?? saved : null);
+    }
+    refresh();
+    return watchFixtureEntry(refresh);
   }, [entryId]);
 
   if (entry === undefined) return <main className="call-layout"><p role="status">Opening your saved exercise…</p></main>;

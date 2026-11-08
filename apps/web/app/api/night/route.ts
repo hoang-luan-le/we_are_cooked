@@ -1,23 +1,24 @@
-import { demoApi } from "../../night/demo-config";
+import { demoApi, fetchDemo, teamEntryApi } from "../../night/demo-config";
+import { isTeamIncidentId } from "../../night/team-entry-contract";
 import type { ActionRequest } from "../../../../../packages/contracts/types";
 
 export const dynamic = "force-dynamic";
 
 async function forward(request: Request, action?: ActionRequest) {
-  const config = demoApi();
+  const ids = new URL(request.url).searchParams.getAll("incident");
+  const teamIncident = ids.length > 0;
+  const config = teamIncident ? teamEntryApi() : demoApi();
   if (!config) return new Response(null, { status: 404 });
+  if (teamIncident && (ids.length !== 1 || !isTeamIncidentId(ids[0]))) return new Response(null, { status: 422 });
   try {
-    const url = new URL(action ? "/api/incident/inc_demo/action" : "/api/incident/inc_demo", config.origin);
-    const response = await fetch(url, {
-      method: action ? "POST" : "GET",
-      body: action ? JSON.stringify(action) : undefined,
-      headers: action ? { "Content-Type": "application/json", "X-Demo-User": config.user } : undefined,
-      cache: "no-store",
-      redirect: "error",
-      signal: AbortSignal.any([request.signal, AbortSignal.timeout(6000)]),
-    });
+    const path = `/api/incident/${ids[0] ?? "inc_demo"}`;
+    const response = await fetchDemo(request, config, action ? `${path}/action` : path, action);
     if (!response.ok) return new Response(null, { status: response.status });
-    return Response.json(await response.json(), { headers: { "Cache-Control": "no-store" } });
+    const data = await response.json();
+    if (teamIncident && !action && (!Array.isArray(data.teammates) || !data.teammates.includes(config.user))) {
+      return new Response(null, { status: 404 });
+    }
+    return Response.json(data, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return new Response(null, { status: 503 });
   }

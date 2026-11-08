@@ -4,11 +4,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useState } from "react";
 import type { Level } from "../../../../packages/contracts/dana";
-import { fixtureCohort, fixtureEntryHref, type FixtureEntry, levels, readFixtureEntry, startFixtureEntry } from "../night/fixture-entry";
+import { fixtureCohort, fixtureEntryHref, type FixtureEntry, levels, readFixtureEntry, startFixtureEntry, watchFixtureEntry } from "../night/fixture-entry";
+
+import { TeamEntry } from "./team-entry";
 
 const levelOptions = ["explore", "practice", "challenge"] as const;
 
-export function EntryForm({ localApiAvailable }: { localApiAvailable: boolean }) {
+export function EntryForm({ localApiAvailable, teamUser }: { localApiAvailable: boolean; teamUser?: string }) {
   const router = useRouter();
   const [level, setLevel] = useState<Level>("explore");
   const [code, setCode] = useState("");
@@ -18,8 +20,11 @@ export function EntryForm({ localApiAvailable }: { localApiAvailable: boolean })
   const [leaving, setLeaving] = useState(false);
 
   useEffect(() => {
-    setSaved(readFixtureEntry());
-  }, []);
+    if (teamUser) return;
+    const refresh = () => setSaved(readFixtureEntry());
+    refresh();
+    return watchFixtureEntry(refresh);
+  }, [teamUser]);
 
   function enter(kind: FixtureEntry["kind"]) {
     if (leaving) return;
@@ -48,7 +53,7 @@ export function EntryForm({ localApiAvailable }: { localApiAvailable: boolean })
 
   return (
     <div className="entry-stack">
-      {saved === undefined ? <p className="muted" role="status">Checking this browser for a saved exercise…</p> : null}
+      {!teamUser && saved === undefined ? <p className="muted" role="status">Checking this browser for a saved exercise…</p> : null}
       {saved ? (
         <section className="panel entry-section" aria-labelledby="saved-title">
           <h2 id="saved-title">Resume your exercise</h2>
@@ -57,9 +62,9 @@ export function EntryForm({ localApiAvailable }: { localApiAvailable: boolean })
         </section>
       ) : null}
       <section className="panel entry-section" aria-labelledby="entry-title">
-        <span className="badge fixture">Development entry fixture</span>
-        <h2 id="entry-title">Start a practice exercise</h2>
-        <p className="muted">This exercise saves progress in this browser. The rehearsal roster uses simulated teammates.</p>
+        <span className="badge fixture">{teamUser ? "Local API entry" : "Development entry fixture"}</span>
+        <h2 id="entry-title">{teamUser ? "Start a team API exercise" : "Start a practice exercise"}</h2>
+        {!teamUser ? <p className="muted">This exercise saves progress in this browser. The rehearsal roster uses simulated teammates.</p> : null}
         <fieldset className="entry-levels" disabled={leaving}>
           <legend>Difficulty</legend>
           {levelOptions.map(option => (
@@ -79,6 +84,7 @@ export function EntryForm({ localApiAvailable }: { localApiAvailable: boolean })
             </ol>
           </details>
         ) : null}
+        {teamUser ? <TeamEntry user={teamUser} level={level} /> : <>
         <button className="primary" disabled={leaving} onClick={() => enter("solo")}>Start solo exercise</button>
         {saved ? <p className="muted">Starting or joining an exercise replaces the saved exercise in this browser.</p> : null}
         <form className="entry-section entry-join" onSubmit={join}>
@@ -95,7 +101,9 @@ export function EntryForm({ localApiAvailable }: { localApiAvailable: boolean })
           {error ? <p id="cohort-error" className="notice" role="alert">{error}</p> : null}
         </form>
         {storageError ? <p className="notice" role="alert">This browser could not save the exercise. Enable local storage to continue.</p> : null}
+        </>}
       </section>
+      {teamUser ? <Link href="/night?fixture=1">Open the offline Night fixture</Link> : null}
       {localApiAvailable ? (
         <section className="panel entry-section" aria-labelledby="api-demo-title">
           <h2 id="api-demo-title">Continue the local API demo</h2>

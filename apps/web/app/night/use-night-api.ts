@@ -10,7 +10,8 @@ export type NightAction =
 
 export type NightSnapshot = { incident: IncidentState; samples: MetricSample[] };
 
-export function useNightApi(enabled: boolean) {
+export function useNightApi(enabled: boolean, incidentId?: string) {
+  const path = incidentId ? `/api/night?incident=${encodeURIComponent(incidentId)}` : "/api/night";
   const [snapshot, setSnapshot] = useState<NightSnapshot>();
   const [readError, setReadError] = useState(false);
   const [actionError, setActionError] = useState("");
@@ -41,7 +42,7 @@ export function useNightApi(enabled: boolean) {
     const controller = new AbortController();
     active.current = { controller, write: false };
     try {
-      const response = await fetch("/api/night", { cache: "no-store", signal: controller.signal });
+      const response = await fetch(path, { cache: "no-store", signal: controller.signal });
       if (!response.ok) throw new Error("Incident unavailable");
       const incident: IncidentState = await response.json();
       if (!controller.signal.aborted) show(incident);
@@ -50,7 +51,7 @@ export function useNightApi(enabled: boolean) {
     } finally {
       if (active.current?.controller === controller) active.current = null;
     }
-  }, [show]);
+  }, [path, show]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -79,7 +80,7 @@ export function useNightApi(enabled: boolean) {
     let refresh = false;
     try {
       const body: ActionRequest = { ...intent, idempotency_key: idempotencyKey };
-      const response = await fetch("/api/night", {
+      const response = await fetch(path, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body), signal: controller.signal,
       });

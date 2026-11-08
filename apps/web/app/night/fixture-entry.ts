@@ -25,6 +25,7 @@ export type FixtureEntry = {
   level: Level;
   kind: "solo" | "cohort";
   answered: boolean;
+  briefingPending?: boolean;
   rollbackAt: number | null;
 };
 
@@ -40,12 +41,26 @@ export function readFixtureEntry(): FixtureEntry | null {
     if (!entry || typeof entry.id !== "string" || !/^[a-f0-9]{16}$/.test(entry.id) ||
       (entry.level !== "explore" && entry.level !== "practice" && entry.level !== "challenge") ||
       (entry.kind !== "solo" && entry.kind !== "cohort") || typeof entry.answered !== "boolean" ||
+      (entry.briefingPending !== undefined && typeof entry.briefingPending !== "boolean") ||
+      (entry.briefingPending && (!entry.answered || entry.rollbackAt !== null)) ||
       (entry.rollbackAt !== null && (!entry.answered || typeof entry.rollbackAt !== "number" ||
         !Number.isFinite(entry.rollbackAt) || entry.rollbackAt < 0))) return null;
     return entry as FixtureEntry;
   } catch {
     return null;
   }
+}
+
+export function watchFixtureEntry(refresh: () => void) {
+  function onStorage(event: StorageEvent) {
+    if (event.key === storageKey || event.key === null) refresh();
+  }
+  window.addEventListener("storage", onStorage);
+  window.addEventListener("pageshow", refresh);
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    window.removeEventListener("pageshow", refresh);
+  };
 }
 
 export function startFixtureEntry(level: Level, kind: FixtureEntry["kind"]): FixtureEntry {
@@ -55,11 +70,23 @@ export function startFixtureEntry(level: Level, kind: FixtureEntry["kind"]): Fix
   return entry;
 }
 
-export function updateFixtureEntry(id: string, progress: Partial<Pick<FixtureEntry, "answered" | "rollbackAt">>) {
+type FixtureTransition = { type: "answer" | "finish_briefing" } | { type: "rollback"; startedAt: number };
+
+export function updateFixtureEntry(id: string, transition: FixtureTransition) {
   const current = readFixtureEntry();
   if (current?.id !== id) return false;
+  let next: FixtureEntry;
+  if (transition.type === "answer" && !current.answered) {
+    next = { ...current, answered: true, briefingPending: true };
+  } else if (transition.type === "finish_briefing" && current.briefingPending) {
+    next = { ...current, briefingPending: false };
+  } else if (transition.type === "rollback" && current.answered && !current.briefingPending && current.rollbackAt === null) {
+    next = { ...current, rollbackAt: transition.startedAt };
+  } else {
+    return true;
+  }
   try {
-    localStorage.setItem(storageKey, JSON.stringify({ ...current, ...progress }));
+    localStorage.setItem(storageKey, JSON.stringify(next));
     return true;
   } catch {
     return false;

@@ -1,37 +1,33 @@
-STATUS: BLOCKED
+STATUS: READY_FOR_REVIEW
 COMMAND_ID: 02-LANDING-ENTRY-01
 
 # Phase 02 Landing and Entry
 
-The fixture slice is ready for review. Live entry awaits the backend cohort, membership, and session contract. Base commit is [a001c30](https://github.com/thanhtungnguyen-dev/we_are_cooked/commit/a001c302de04c7a02a795ebd45b6062c45d8fbc1). [Phase 01 handoff](https://github.com/thanhtungnguyen-dev/we_are_cooked/blob/a001c302de04c7a02a795ebd45b6062c45d8fbc1/reports/codex.md)
+Base on the fork is [a001c30](https://github.com/thanhtungnguyen-dev/we_are_cooked/commit/a001c302de04c7a02a795ebd45b6062c45d8fbc1). Team entry was verified against Duy's backend at [05ecda9](https://github.com/hoang-luan-le/we_are_cooked/commit/05ecda9c55620412e1c2c6b8da648623dad8283d). [Phase 01 handoff](https://github.com/thanhtungnguyen-dev/we_are_cooked/blob/a001c302de04c7a02a795ebd45b6062c45d8fbc1/reports/codex.md)
 
 ## A. Full-stack and React
 
-- [Landing](../apps/web/app/page.tsx) links to [StartPage](../apps/web/app/start/page.tsx). The server wrapper reuses the Phase 01 demo gate and makes the existing local API demo link available only when configured. App Router navigation and prefetch read routes. Start and Join persist an exercise only from a button or form event.
-- [EntryForm](../apps/web/app/start/entry-form.tsx) uses state for the level, code, errors, and navigation. Its mount effect reads the existing browser entry after hydration. The initial server render can show the same loading text as the first browser render. Reading browser storage in render would produce different results on the server and browser. Explore adds a checklist. Practice and Challenge are persisted choices within the shared Night scenario.
-- [FixtureNight](../apps/web/app/night/fixture-night.tsx) checks the URL identifier against the saved entry after hydration. [NightRun](../apps/web/app/night/night-run.tsx) starts at the answered stage when resuming. [IncidentBoard](../apps/web/app/night/incident-board.tsx) stores the time of rollback and derives the completed samples when reopened. The effect schedules the next sample from that timestamp and clears its timer on unmount.
+- [StartPage](../apps/web/app/start/page.tsx) selects the available entry mode on the server. [EntryForm](../apps/web/app/start/entry-form.tsx) renders difficulty, Explore guidance and the development fixture. Browser storage reads run after hydration. The effect subscribes to storage changes and page restoration and removes listeners on cleanup. Only explicit Start or Join writes fixture progress.
+- [FixtureNight](../apps/web/app/night/fixture-night.tsx) checks the link ID against the saved entry. A replaced ID leaves the old route, and a duplicate or ambiguous query cannot fall through to the shared demo. [NightRun](../apps/web/app/night/night-run.tsx) records Answer, briefing completion, and rollback as separate transitions. Legacy Answer-only records continue to the board.
+- [TeamEntry](../apps/web/app/start/team-entry.tsx) uses a ref to prevent overlapping submissions and React state for visible progress, roster, and errors. The browser calls the [same-origin entry bridge](../apps/web/app/api/night/entry/route.ts). The bridge validates the request and calls the team API with the configured local demo identity. Joining returns a roster. A separate Start sends the chosen level and selected handles and returns a new incident ID. [The incident bridge](../apps/web/app/api/night/route.ts) checks team membership on reads and forwards actions to the selected incident.
 
 ## B. Data structures and algorithms
 
-[FixtureEntry](../apps/web/app/night/fixture-entry.ts) stores one versioned record with an ID, level, entry kind, Answer state, and rollback timestamp. The loader checks its shape. The ID prevents a stale link from opening the exercise that replaced it. The same check protects progress updates from a different open exercise ID.
-
-Code normalization trims and uppercases an input of length n in O(n) time and space. Comparing the normalized input with the two fixture codes is bounded by those short strings. The roster is a static array of m names and roles with O(m) rendering time. The recovery function scans the k recovery samples in O(k) time with constant auxiliary space. With three samples, reconstructing progress from a single timestamp is simpler than saving every intermediate point or building a replay log.
+[FixtureEntry](../apps/web/app/night/fixture-entry.ts) keeps one versioned record. Validated transitions preserve the first rollback timestamp and prevent reopening a completed briefing in storage. [IncidentBoard](../apps/web/app/night/incident-board.tsx) derives recovery by walking k timestamp offsets in O(k) time and O(1) auxiliary space. A team roster is a list of m member handles and the selection is an array of at most three handles. Rendering the list takes O(m) time and checking or removing a selected handle takes at most three comparisons.
 
 ## C. System design and limits
 
-The development fixture deliberately stores one exercise per browser. The fixture cohort code and roster demonstrate invalid, expired, and accepted entry and provide a scenario role. The local API path resumes the configured shared incident through the existing Phase 01 proxy. It uses the backend snapshot for incident actions and recovery.
+The development fixture covers invalid and expired invitations and displays a simulated role. The team API supports real join, member lookup, incident creation and lookup by ID. The UI treats the backend as the authority for the roster, membership and incident state. Browser storage remembers links scoped by demo handle. The team API currently exposes no role assignment, expiry semantics, account-wide incident discovery or revision. Start also lacks an idempotency key. A failed acknowledgement can leave an incident created without a known ID, so the UI explains the consequence of retrying.
 
-A real cohort should provide join and resume responses bound to an authenticated member and incident. The server decides the assigned role and visible roster. Duy's contract needs the join result, invalid and expired responses, role and member fields, and how a refreshed session resumes. A browser fixture can exercise the interface while those shapes are pending. The API demo stays on the existing incident so a frontend Start action cannot reset teammates' work.
+The fork's existing backend and shared demo route stay compatible. Opt in to team entry only when running the compatible team backend on loopback. Team entry is a local demo flow with a configured identity. An authenticated deployment requires member-scoped state and relay authentication. The team server currently exposes state reads directly without authentication.
 
 ## Checks
 
-| Check | Outcome |
-| --- | --- |
-| `npm run build` and `npm run typecheck` from `apps/web` | Passed. |
-| `npm run test:browser -- tests/entry.spec.ts tests/night.spec.ts` with Chromium 153 | 9 passed. Includes keyboard entry, mobile join, invalid and expired code recovery, fixture roster and role, stale link recovery, refresh during rollback, and Phase 01 regression checks. |
-| `NIGHT_TEST_API_ORIGIN=http://127.0.0.1:3213 npm run test:browser -- tests/night-api.spec.ts` | 1 passed with local FastAPI and a mocked Dana socket. The entry link resumes the API demo and the rollback retry still applies once. |
-| Production `/start` with `NIGHT_FIXTURES` unset | Development entry controls are gated. |
+- Production build and typecheck passed.
+- Twelve fixture and Night browser checks passed. These include briefing refresh, legacy storage, tab replacement, blocked storage, mobile join, rollback recovery, and voice lifecycle.
+- One browser check against the fork's actual local FastAPI passed with a mocked Dana socket. One browser check against the team's actual local FastAPI passed for cohort join, roster restore, team incident creation, resume, and the bridge's nonmember response.
+- The production opt-in gate passed.
 
-**Explain it back.** Why does saving the rollback start time let a refreshed browser reconstruct the current fixture stage?
+**Explain it back.** Why does refreshing a fixture replay its scripted briefing while refreshing an API incident reads the server?
 
-**Quick verification.** Open Start simulation, try `NIGHT00`, then join with `NIGHT24`. Answer Dana, roll back, and refresh. Open the roster and check the role. [Run commands](../apps/web/README.md)
+**Quick verification.** Start solo in fixture mode, answer Dana, and refresh while the captions are visible. Continue to the board and refresh again. [Run instructions](../apps/web/README.md)
