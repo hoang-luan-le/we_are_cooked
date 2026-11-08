@@ -36,7 +36,7 @@ export function MorningWorkspace({ incidentId, user, relayBase, rehearsalGitHub 
             : api.actionError || (incident ? "Incident refresh failed. Showing the last update." : "The incident could not be loaded.")}</p>
           <div className="actions">
             <button onClick={api.refresh}>Refresh incident</button>
-            {api.retryAction?.action === "deploy_fix" ? <button disabled={api.pending} onClick={() => void api.act({ action: "deploy_fix" })}>Retry deploy confirmation</button> : null}
+            {api.retryAction?.action === "deploy_fix" && incident?.pr?.substantive_review ? <button disabled={unavailable} onClick={() => void api.act({ action: "deploy_fix" })}>Retry deploy confirmation</button> : null}
           </div>
         </div> : null}
         {!incident && !api.readError ? <p role="status">Loading Morning workspace…</p> : null}
@@ -50,7 +50,7 @@ export function MorningWorkspace({ incidentId, user, relayBase, rehearsalGitHub 
           <MorningReview incident={incident} unavailable={unavailable} onChange={api.refresh} onDeploy={() => api.act({ action: "deploy_fix" })} />
           {fixed ? <>
             <MorningDebrief incident={incident} user={user} relayBase={relayBase} unavailable={unavailable} refresh={api.refresh} />
-            <PrivateEvidence key={incident.rubric?.final ? "final" : "provisional"} incident={incident} />
+            <PrivateEvidence incident={incident} />
             {incident.rubric?.final ? <Connections incident={incidentId} unavailable={unavailable} /> : null}
           </> : null}
         </div> : null}

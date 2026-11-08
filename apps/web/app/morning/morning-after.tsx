@@ -5,6 +5,7 @@ import type { Criterion, IncidentEvidence, NetworkCard } from "../../../../packa
 import type { DanaMode } from "../../../../packages/contracts/dana";
 import { DanaBriefing, useDanaBriefing } from "../night/dana-briefing";
 import { prepareDanaAudio } from "../night/dana-connection";
+import { levels } from "../night/fixture-entry";
 import type { NightIncident } from "../night/use-night-api";
 import { githubPullUrl } from "./morning-contract";
 import { useMorningResource, useMorningWrite } from "./use-morning-api";
@@ -112,7 +113,7 @@ export function MorningDebrief({ incident, user, relayBase, unavailable, refresh
 }
 
 export function PrivateEvidence({ incident }: { incident: NightIncident }) {
-  const { data, status, reload } = useMorningResource<{ handle: string; record: IncidentEvidence | null }>(incident.incident_id, "evidence");
+  const { data, status, reload } = useMorningResource<{ handle: string; record: IncidentEvidence | null }>(incident.incident_id, "evidence", incident.rubric?.final);
   const record = data?.record;
   const pr = record?.pr ? githubPullUrl(record.pr.url) : undefined;
   return (
@@ -120,7 +121,7 @@ export function PrivateEvidence({ incident }: { incident: NightIncident }) {
       <h2 id="private-evidence">Private incident evidence</h2>
       {status === undefined && !data ? <p role="status">Loading your record…</p> : null}
       {status === 404 || (data && !record) ? <p>No participation record is available for this member on this incident.</p> : null}
-      {status && status >= 400 && status !== 404 ? <p className="notice" role="alert">The evidence record is unavailable.</p> : null}
+      {status && status >= 400 && status !== 404 ? <p className="notice" role="alert">{record ? "Evidence could not be refreshed. Showing the last loaded record." : "The evidence record is unavailable."}</p> : null}
       {record ? <>
         <p className="muted">Recorded for {data.handle} · {record.role} · {record.phase.replaceAll("_", " ")}</p>
         <dl className="service-facts">
@@ -130,7 +131,9 @@ export function PrivateEvidence({ incident }: { incident: NightIncident }) {
           {incident.handoff ? <div><dt>Handoff simulation time</dt><dd>{incident.handoff.sim_clock}</dd></div> : null}
           {record.pr ? <>
             <div><dt>CI result</dt><dd>{record.pr.ci}</dd></div>
+            <div><dt>Merge</dt><dd>{record.pr.merged ? "Merged" : "Open or unmerged"}</dd></div>
             <div><dt>Non-author reviews</dt><dd>{record.pr.reviewers}</dd></div>
+            {record.pr.mentor_reviewed ? <div><dt>Mentor review</dt><dd>Recorded</dd></div> : null}
             {incident.pr?.url === record.pr.url ? <div><dt>Head commit</dt><dd><code>{incident.pr.head_sha}</code></dd></div> : null}
           </> : null}
           {record.rubric?.final ? <div><dt>Final rubric</dt><dd>{record.rubric.total}/{record.rubric.out_of}</dd></div> : null}
@@ -146,19 +149,21 @@ export function Connections({ incident, unavailable }: { incident: string; unava
   const { data, status, reload } = useMorningResource<{ pending: string[]; cards: NetworkCard[] }>(incident, "connections");
   const { busy, submit } = useMorningWrite(incident);
   const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
+  const [unconfirmed, setUnconfirmed] = useState<string>();
   const [submitted, setSubmitted] = useState<string[]>([]);
 
+  const canAnswer = !unavailable && !busy && status === 200;
+
   async function answer(handle: string, workAgain: boolean) {
-    if (unavailable || busy) return;
+    if (!canAnswer) return;
     setNotice("");
-    setError("");
+    setUnconfirmed(undefined);
     const result = await submit({ operation: "connect", handle, workAgain });
     if (result?.ok) {
       setSubmitted(previous => [...previous, handle]);
       setNotice(workAgain ? "Your private request was saved. A connection appears after mutual consent." : "Your choice was saved privately.");
-      reload();
-    } else if (result) setError("The API did not confirm the choice. Refresh connections before retrying.");
+    } else if (result) setUnconfirmed(handle);
+    if (result) reload();
   }
 
   return (
@@ -166,19 +171,27 @@ export function Connections({ incident, unavailable }: { incident: string; unava
       <h2 id="mutual-title">Work together again</h2>
       <p>Each teammate answers privately. Connections appear after both opt in.</p>
       {status === undefined && !data ? <p role="status">Loading connections…</p> : null}
-      {status && status >= 400 ? <p className="notice" role="alert">Connections are unavailable.</p> : null}
+      {status && status >= 400 ? <p className="notice" role="alert">{data ? "Connections could not be refreshed. Showing the last loaded results." : "Connections are unavailable."}</p> : null}
       {data?.pending.filter(handle => !submitted.includes(handle)).map(handle => <div className="entry-section" key={handle}>
         <strong>{handle}</strong>
         <div className="actions">
-          <button disabled={busy || unavailable} onClick={() => void answer(handle, true)}>Request connection with {handle}</button>
-          <button disabled={busy || unavailable} onClick={() => void answer(handle, false)}>Skip {handle}</button>
+          <button disabled={!canAnswer} onClick={() => void answer(handle, true)}>Request connection with {handle}</button>
+          <button disabled={!canAnswer} onClick={() => void answer(handle, false)}>Skip {handle}</button>
         </div>
       </div>)}
-      {data?.cards.map(card => <p key={card.handle}><span className="badge success">Mutual connection</span> {card.handle}
-        {card.github_login ? ` · GitHub ${card.github_login}` : ""}{card.contact ? ` · ${card.contact}` : ""}</p>)}
+      {data?.cards.map(card => {
+        const sharedPull = card.basis.pr_url ? githubPullUrl(card.basis.pr_url) : undefined;
+        return <div className="entry-section" key={card.handle}>
+          <p><span className="badge success">Mutual connection</span> {card.handle}
+            {card.github_login ? ` · GitHub ${card.github_login}` : ""}{card.contact ? ` · ${card.contact}` : ""}</p>
+          <p className="muted">{levels[card.basis.level].title} · {card.basis.phase.replaceAll("_", " ")}</p>
+          {sharedPull ? <a href={sharedPull} target="_blank" rel="noreferrer">Open shared PR on GitHub</a> : null}
+        </div>;
+      })}
       {data && !data.pending.length && !data.cards.length ? <p className="muted">No pending choices or mutual connections.</p> : null}
       {notice ? <p role="status">{notice}</p> : null}
-      {error ? <p className="notice" role="alert">{error}</p> : null}
+      {unconfirmed && status === 200 && data?.pending.includes(unconfirmed) ?
+        <p className="notice" role="alert">Your choice has not been confirmed. You can try again.</p> : null}
       <button onClick={reload}>Refresh connections</button>
     </section>
   );

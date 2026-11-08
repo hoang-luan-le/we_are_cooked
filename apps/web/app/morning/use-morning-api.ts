@@ -9,26 +9,28 @@ function path(incident: string, resource?: string) {
   return `/api/morning?${params}`;
 }
 
-export function useMorningResource<T>(incident: string, resource: "checks" | "evidence" | "connections") {
+export function useMorningResource<T>(incident: string, resource: "checks" | "evidence" | "connections", refreshKey?: boolean) {
   const [data, setData] = useState<T>();
   const [status, setStatus] = useState<number>();
   const [attempt, setAttempt] = useState(0);
-  const reload = useCallback(() => setAttempt(value => value + 1), []);
+  const reload = useCallback(() => {
+    setStatus(undefined);
+    setAttempt(value => value + 1);
+  }, []);
   useEffect(() => {
     const controller = new AbortController();
     setStatus(undefined);
     void fetch(path(incident, resource), { cache: "no-store", signal: controller.signal }).then(async response => {
       const result: T | undefined = response.ok ? await response.json() : undefined;
       if (controller.signal.aborted) return;
-      setData(result);
+      if (response.status < 500) setData(result);
       setStatus(response.status);
     }).catch(() => {
       if (controller.signal.aborted) return;
-      setData(undefined);
       setStatus(503);
     });
     return () => controller.abort();
-  }, [incident, resource, attempt]);
+  }, [incident, resource, attempt, refreshKey]);
   return { data, status, reload };
 }
 

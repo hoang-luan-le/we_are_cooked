@@ -1,4 +1,49 @@
 STATUS: READY_FOR_REVIEW
+COMMAND_ID: 04-MORNING-QUALITY-01
+
+# Phase 04 Morning readiness review
+
+**Local 2D P0 readiness is 92/100.** The Phase 04 baseline was merged in [PR #4](https://github.com/thanhtungnguyen-dev/we_are_cooked/pull/4). This follow-up starts from [e34c11a](https://github.com/thanhtungnguyen-dev/we_are_cooked/commit/e34c11aa1ff0d6f9c14ceaa7b8becdf2516a0f19), which also contains the Phase 05 Resume fix. It reuses the Morning routes, API hooks, styles, and rehearsal fixture.
+
+## What changed
+
+- [MorningReview](../apps/web/app/morning/morning-review.tsx) now requires substantive independent review in addition to the backend's allowed action. A merged green PR with only self-review reproduced the original issue. The confirmation remembers the reviewed PR URL and head SHA, and blocks confirmation when polling shows different evidence or lost eligibility.
+- [IncidentCheck](../apps/web/app/morning/incident-check.tsx) and [Connections](../apps/web/app/morning/morning-after.tsx) read back server state when an answer may have been accepted but the POST response was lost. The browser suite forwards the write to FastAPI, drops the response, and confirms that the saved answer and consent appear through reads with one write each. A temporary refresh failure retains the last loaded view and pauses writes. A denied read clears it.
+- [Private evidence and mutual connections](../apps/web/app/morning/morning-after.tsx) now display the backend's merge status and the basis for a mutual card. The card's PR link goes through the existing GitHub URL validator. The provisional-to-final rubric transition refreshes evidence without remounting the panel, so the refresh control can retain focus.
+
+## React and request order
+
+The Deploy click captures the current verification in `useState` because its identity and eligibility affect what the dialog renders. The dialog ref exposes the native modal API. The confirm handler compares its captured URL and head with the current incident snapshot. Re-reading the snapshot only when the dialog opens would shorten the period of staleness but would miss changes observed while the dialog stays open.
+
+The same-origin Next.js route still calls the member-scoped FastAPI resources. `useMorningResource` uses an effect keyed to incident, resource, refresh attempt, and final rubric state when supplied. Cleanup aborts stale requests. After an uncertain write, the following GET resolves what the server currently holds. Automatically repeating the POST would risk overwriting an answer or an existing choice. The browser retains the last allowed read on a temporary failure and clears it on a denied read.
+
+## Data structures
+
+Comparing two bounded PR URL and head pairs takes O(1) extra space and work with the contract's length limits. Rendering a connection panel with p pending choices, s acknowledged local choices, and c mutual cards takes O(p × (1 + s) + c) time and O(p + c) rendering space. The incident team caps these lists. For a larger roster, a Set built in O(s) time and space would replace the membership scans with expected O(1) lookups.
+
+## Readiness score
+
+This uses the existing Phase 01–03 weights. The score covers the local 2D P0 scope. The full live category receives zero points.
+
+| Criterion | Weight | Earned | Evidence |
+| --- | ---: | ---: | --- |
+| Core player flow | 30 | 30 | Night handoff, rating, Explore, eligible PR and deploy, before/after, Dana debrief, per-member evidence and mutual consent. |
+| Failure and resume | 22 | 22 | Unrelated PR, pending and failed CI, merged green self-review, changed PR head in an open dialog, lost check and consent responses, evidence refresh failure and denial. |
+| Keyboard, touch and layout | 15 | 15 | Keyboard Deploy and Escape focus, evidence refresh focus, mobile touch consent, and no horizontal overflow at 320, 390 and 1440 px. |
+| Feedback and state clarity | 15 | 15 | Source labels, distinct CI/review/merge states, read-only link on provider failure, changed-head notice, stale evidence notice and mutual card basis. |
+| Build and regression evidence | 10 | 10 | Build, typecheck, production opt-in gates, 23 browser tests, 84 backend smoke checks and 9 offline voice checks. |
+| Live and full contract evidence | 8 | 0 | Authenticated staging, actual pilot PR and GitHub, Deepgram with a device microphone, assigned reviewer identity, and server-side review and expected-head enforcement. |
+| **Total** | **100** | **92** | **Ready for review on the local 2D track.** |
+
+The browser can block a deploy after it observes a changed head. The backend action still checks merge and CI and accepts no expected head or assigned reviewer. Duy owns an atomic review and head precondition at deploy time. The four-browser landing-to-evidence rehearsal took 25.6 seconds on local SQLite with a GitHub fixture and Dana's scripted relay. The dated Adzuna jobs snapshot is P1 in the Working Plan and sits outside this P0 score.
+
+**Explain it back.** Why can the browser safely reload a choice after a lost POST response, and which race can only a server-side deploy precondition close?
+
+**Quick verification.** Follow the [Morning fixture setup](../apps/web/README.md) and run `npm run test:browser -- tests/morning.spec.ts` with the documented Morning variables. Open the Deploy dialog with a valid PR, change the observed head as the test does, and verify the original confirmation stays blocked until you reopen the dialog.
+
+---
+
+STATUS: READY_FOR_REVIEW
 COMMAND_ID: 05-RESUME-01
 
 # Phase 05 Team Resume during entry requests
