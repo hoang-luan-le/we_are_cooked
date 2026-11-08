@@ -14,6 +14,8 @@ from typing import Any, Callable
 import httpx
 import jwt
 
+import tls
+
 logger = logging.getLogger("incident_lab.accounts")
 JWKS_CACHE_S = 600.0
 JWKS_MIN_REFETCH_S = 30.0   # unknown key ids can't make us hammer Auth0
@@ -35,7 +37,7 @@ class Auth0Verifier:
                  clock: Callable[[], float] = time.monotonic) -> None:
         self.issuer = f"https://{domain.strip().rstrip('/')}/"
         self.audience = audience
-        self._http = httpx.Client(timeout=TIMEOUT_S, transport=transport)
+        self._http = httpx.Client(timeout=TIMEOUT_S, transport=transport, verify=tls.verify())
         self._clock = clock
         self._keys: dict[str, Any] = {}
         self._fetched_at = float("-inf")
