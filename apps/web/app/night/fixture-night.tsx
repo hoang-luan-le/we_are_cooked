@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { type FixtureEntry, readFixtureEntry, watchFixtureEntry } from "./fixture-entry";
-import { NightRun } from "./night-run";
+import { NightRun, type NightStage } from "./night-run";
 
-export function FixtureNight({ entryId }: { entryId: string }) {
+export function FixtureNight({ entryId, onStage }: { entryId: string; onStage?: (stage: NightStage) => void }) {
   const [entry, setEntry] = useState<FixtureEntry | null | undefined>();
 
   useEffect(() => {
@@ -26,5 +26,5 @@ export function FixtureNight({ entryId }: { entryId: string }) {
     </main>
   );
 
-  return <NightRun entry={entry} />;
+  return <NightRun entry={entry} onStage={onStage} />;
 }
