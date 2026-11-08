@@ -14,7 +14,8 @@ function stepsFor(pilot: Pilot | undefined): Step[] {
       detail: `The bug lives in your team's repo, ${pilot.repo}. Clone it once, then open it in VS Code. `
         + "To open a pull request you need write access: ask the repo owner to add your GitHub account as a "
         + "collaborator (or fork the repo and open the PR from your fork).",
-      command: `git clone ${pilot.clone_url} && code ${folder}`,
+      command: `git clone ${pilot.clone_url}
+code ${folder}`,
       link: { href: pilot.url, label: `Open ${pilot.repo} on GitHub` },
     } : {
       title: "Get your team's code",
@@ -22,13 +23,16 @@ function stepsFor(pilot: Pilot | undefined): Step[] {
     },
     {
       title: "Start a branch",
-      detail: "In VS Code, open the terminal (Ctrl+`) inside the repo folder.",
-      command: `git checkout ${base} && git pull && git checkout -b fix/guest-checkout`,
+      detail: "In VS Code, open the terminal (Ctrl+`) inside the repo folder. Paste each block; every line runs in order.",
+      command: `git checkout ${base}
+git pull
+git checkout -b fix/guest-checkout`,
     },
     {
       title: "Run the tests",
       detail: "Install the test tools once, then run the unit tests. They pass: nothing tests guests yet.",
-      command: "pip install -r requirements-dev.txt && python -m pytest tests -q",
+      command: `pip install -r requirements-dev.txt
+python -m pytest tests -q`,
     },
     {
       title: "Reproduce the bug with a failing test",
@@ -50,7 +54,9 @@ function stepsFor(pilot: Pilot | undefined): Step[] {
       title: "Open a pull request",
       detail: `Push, open the PR against ${base} on GitHub, and ask a teammate for a real review (a sentence or two `
         + "about what they checked). Deploy unlocks once the PR is merged, CI is green and a teammate has reviewed it.",
-      command: "git add -A && git commit -m \"fix: guests get no loyalty discount\" && git push -u origin fix/guest-checkout",
+      command: `git add -A
+git commit -m "fix: guests get no loyalty discount"
+git push -u origin fix/guest-checkout`,
     },
   ];
 }
@@ -71,8 +77,8 @@ export function FixInVsCode({ pilot, open = true }: { pilot?: Pilot; open?: bool
             ) : null}
             {step.command ? (
               <div className="fix-command">
-                <code>{step.command}</code>
-                <button type="button" aria-label={`Copy command: ${step.command}`} onClick={async () => {
+                <pre><code>{step.command}</code></pre>
+                <button type="button" aria-label={`Copy the commands for: ${step.title}`} onClick={async () => {
                   try {
                     await navigator.clipboard.writeText(step.command ?? "");
                     setCopied(step.title);

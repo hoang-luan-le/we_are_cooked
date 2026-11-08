@@ -271,3 +271,4 @@ button:active:not(:disabled), .button:active { transform: translateY(1px); }
 .fix-guide li p { margin-top: 4px; color: var(--muted); }
 .fix-command { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
 .fix-command code { overflow-wrap: anywhere; padding: 4px 8px; border-radius: 6px; background: rgba(127, 127, 127, 0.12); }
+.fix-command pre { margin: 0; white-space: pre-wrap; }
