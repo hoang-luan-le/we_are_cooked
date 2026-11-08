@@ -5,6 +5,9 @@ const api = process.env.NIGHT_TEST_API_ORIGIN;
 
 test("uses the demo API for Answer, diagnosis, rollback, recovery and refresh", async ({ page, request }) => {
   test.skip(!api, "Start an isolated backend and set NIGHT_TEST_API_ORIGIN.");
+  await page.addInitScript(() => {
+    Object.defineProperty(crypto, "randomUUID", { value: undefined });
+  });
   const reset = await request.post(`${api}/api/demo/reset`, { headers: { "X-Demo-User": "demo-a" }, data: { level: "explore" } });
   expect(reset.ok()).toBe(true);
   const answerKeys: string[] = [];
@@ -53,6 +56,7 @@ test("uses the demo API for Answer, diagnosis, rollback, recovery and refresh", 
   await page.getByRole("button", { name: "Retry last action" }).click();
   await expect(page.getByRole("heading", { name: "Dana’s briefing" })).toBeVisible();
   expect(answerKeys).toHaveLength(2);
+  expect(answerKeys[0]).toMatch(/^[a-f0-9]{32}$/);
   expect(answerKeys[0]).toBe(answerKeys[1]);
   await expect(page.getByRole("log")).toContainText("Inspect checkout, then roll back safely.");
   expect(briefingSockets).toHaveLength(1);
@@ -75,6 +79,7 @@ test("uses the demo API for Answer, diagnosis, rollback, recovery and refresh", 
   await page.getByRole("button", { name: "Retry last action" }).click();
   await expect.poll(() => rollbackKeys.length).toBe(2);
   expect(rollbackKeys[0]).toBe(rollbackKeys[1]);
+  expect(rollbackKeys[0]).not.toBe(answerKeys[0]);
   await expect(page.getByText("Recovered", { exact: true })).toBeVisible();
 
   const result = await request.get(`${api}/api/incident/inc_demo`);

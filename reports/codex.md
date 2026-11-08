@@ -32,3 +32,11 @@ Full sign-off needs the actual stage PR, a live GitHub verification run, and liv
 **Explain it back.** Why should a failed verification keep the last confirmed PR visible while a successful local practice review leaves the incident’s deployment permission unchanged?
 
 **Quick verification.** Run the [Morning browser rehearsal](../apps/web/README.md) and [inspect the two-browser test](../apps/web/tests/morning.spec.ts). Find the backend action list before and after the verified merge and the network result before and after the second opt-in.
+
+## Phases 01 through 04 integration review
+
+The merge review combined the reviewed 2D work at [537d224](https://github.com/thanhtungnguyen-dev/we_are_cooked/commit/537d2249af3a4c10246e87c12c37d3635ead2ed3) with [main at 31acc9b](https://github.com/thanhtungnguyen-dev/we_are_cooked/commit/31acc9bcf12722677a4dcb266318a88ec6f9d8dc), including Duy’s environment parsing, TLS, and frontend contract updates.
+
+[useNightApi](../apps/web/app/night/use-night-api.ts) now falls back to 128 random bits when the browser lacks `crypto.randomUUID()`. Key generation runs within request cleanup, so a failure cannot leave actions permanently pending. A retry reuses the saved key. The [lost-response browser case](../apps/web/tests/night-api.spec.ts) disables the UUID helper and proves one Answer and one rollback despite retrying both.
+
+The combined candidate passed the production build, typecheck, production opt-in gates, 19 browser cases, 82 backend smoke checks, and 9 offline voice checks. These checks establish the local 2D rehearsal. Role-scoped contracts and the live GitHub and Deepgram checks remain open.

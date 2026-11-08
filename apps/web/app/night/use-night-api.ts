@@ -106,10 +106,11 @@ export function useNightApi(enabled: boolean, incidentId?: string) {
     const actionName = intent.action === "open_panel" ? JSON.stringify([intent.action, intent.panel])
       : isNote ? JSON.stringify([intent.action, intent.text]) : intent.action;
     const previousKey = keys.current.get(actionName);
-    const idempotencyKey = previousKey ?? crypto.randomUUID();
-    keys.current.set(actionName, idempotencyKey);
     let refresh = false;
     try {
+      const idempotencyKey = previousKey ?? crypto.randomUUID?.() ??
+        Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, "0")).join("");
+      keys.current.set(actionName, idempotencyKey);
       const body: ActionRequest = { ...intent, idempotency_key: idempotencyKey };
       const response = await fetch(path, {
         method: "POST", headers: { "Content-Type": "application/json" },
