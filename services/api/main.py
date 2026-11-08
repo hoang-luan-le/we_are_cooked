@@ -19,7 +19,8 @@ from cohorts import CohortStore
 from config import Settings
 from db import MEMORY, Database, open_database
 from engine.errors import ActionRejected
-from routes import cohorts, debrief, demo, handoff, incidents, panels
+from github_client import GitHubClient
+from routes import cohorts, debrief, demo, handoff, incidents, panels, pr
 from routes.deps import Runtime
 from scenario_loader import ScenarioError, load_scenario
 from store import IncidentStore
@@ -75,7 +76,17 @@ async def _rejected(request: Request, exc: ActionRejected) -> JSONResponse:
     return JSONResponse(status_code=exc.status_code, content={"code": exc.code, "detail": exc.message})
 
 
-def create_app(settings: Settings | None = None, clock: Callable[[], float] = time.time) -> FastAPI:
+def _github(settings: Settings, transport) -> GitHubClient | None:
+    if not settings.pilot_repos:
+        logger.info("PILOT_REPOS is empty: GitHub features off (deploy diffs come from scenario.json)")
+        return None
+    return GitHubClient(token=settings.github_token, allowlist=settings.pilot_repos,
+                        mentors=settings.mentor_github, transport=transport)
+
+
+def create_app(
+    settings: Settings | None = None, clock: Callable[[], float] = time.time, github_transport=None,
+) -> FastAPI:
     """`clock` is wall-clock seconds: saved snapshots must still mean something after a restart."""
     resolved = settings or Settings.from_env()
 
@@ -86,10 +97,13 @@ def create_app(settings: Settings | None = None, clock: Callable[[], float] = ti
         app.state.db = db
         app.state.cohorts = CohortStore(db, clock)  # independent of the scenario
         app.state.runtime, app.state.scenario_error = _start_runtime(resolved, clock, db)
+        app.state.github = _github(resolved, github_transport)
         try:
             yield
         finally:
             db.close()
+            if app.state.github is not None:
+                app.state.github.close()
 
     app = FastAPI(title="Incident Lab API", version="0.3.0", lifespan=lifespan)
     _add_cors(app, resolved)
@@ -97,6 +111,7 @@ def create_app(settings: Settings | None = None, clock: Callable[[], float] = ti
     app.include_router(incidents.router)
     app.include_router(handoff.router)
     app.include_router(panels.router)
+    app.include_router(pr.router)
     app.include_router(debrief.router)
     app.include_router(cohorts.router)
     app.include_router(demo.router)
@@ -118,6 +133,7 @@ def create_app(settings: Settings | None = None, clock: Callable[[], float] = ti
             status_code=200,
             content={"status": "ok", "scenario": {"loaded": True, "id": runtime.scenario.id},
                      "database": database,
+                     "pilot_repo": request.app.state.github.pilot_repo if request.app.state.github else None,
                      "demo_incident": runtime.scenario.spec.incident_id,
                      "demo_mode": request.app.state.settings.demo_mode},
         )

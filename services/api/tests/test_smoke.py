@@ -19,6 +19,7 @@ API_DIR = Path(__file__).resolve().parent.parent
 if str(API_DIR) not in sys.path:
     sys.path.insert(0, str(API_DIR))
 
+import httpx  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from config import DEFAULT_DEMO_TEAM, DEFAULT_SCENARIO_PATH, Settings  # noqa: E402
@@ -60,6 +61,47 @@ class FakeClock:
         self.t += seconds
 
 
+PILOT = "shopnorth/shopnorth-checkout"
+PR_URL = f"https://github.com/{PILOT}/pull/12"
+GOOD_REVIEWS = [
+    {"user": {"login": "tung-gh"}, "state": "APPROVED",
+     "body": "Checked the guest path and the unknown-tier test; the guard tests cover free orders."},
+    {"user": {"login": "Mentor-Ana"}, "state": "COMMENTED", "body": "Nice."},
+]
+
+
+class FakeGitHub:
+    """Just enough of the GitHub REST API for PR verify and release diffs."""
+
+    def __init__(self, *, merged=True, ci="success", reviews=None, comments=(), down=False):
+        self.merged, self.ci, self.down, self.calls = merged, ci, down, 0
+        self.reviews = GOOD_REVIEWS if reviews is None else reviews
+        self.comments = list(comments)
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        self.calls += 1
+        if self.down:
+            return httpx.Response(503, json={"message": "down"})
+        path, base = request.url.path, f"/repos/{PILOT}"
+        if path == f"{base}/pulls/12":
+            return httpx.Response(200, json={"merged": self.merged, "user": {"login": "duy-gh"},
+                                             "head": {"sha": "abc123"}, "html_url": PR_URL})
+        if path == f"{base}/commits/abc123/check-runs":
+            runs = [] if self.ci is None else [
+                {"status": "in_progress" if self.ci == "pending" else "completed",
+                 "conclusion": None if self.ci == "pending" else self.ci}]
+            return httpx.Response(200, json={"check_runs": runs})
+        if path == f"{base}/commits/abc123/status":
+            return httpx.Response(200, json={"state": "pending"})
+        if path == f"{base}/pulls/12/reviews":
+            return httpx.Response(200, json=self.reviews)
+        if path == f"{base}/pulls/12/comments":
+            return httpx.Response(200, json=self.comments)
+        if path.startswith(f"{base}/compare/"):
+            return httpx.Response(200, json={"files": [{"filename": "checkout/pricing.py", "patch": "@@ real @@"}]})
+        return httpx.Response(404, json={"message": "Not Found"})
+
+
 class Harness:
     """A running app with a fake clock and helpers for the common calls."""
 
@@ -67,11 +109,13 @@ class Harness:
 
     def __init__(self, scenario_path: Path = DEFAULT_SCENARIO_PATH, auth0_domain: str = "",
                  sqlite_path: str = ":memory:", database_url: str = "", clock: FakeClock | None = None,
-                 demo_team: tuple[str, ...] = DEFAULT_DEMO_TEAM) -> None:
+                 demo_team: tuple[str, ...] = DEFAULT_DEMO_TEAM, github: "FakeGitHub | None" = None) -> None:
         self.clock = clock or FakeClock()
         settings = Settings(scenario_path=scenario_path, internal_key=INTERNAL_KEY, auth0_domain=auth0_domain,
-                            sqlite_path=sqlite_path, database_url=database_url, demo_team=demo_team)
-        self.app = create_app(settings, clock=self.clock)
+                            sqlite_path=sqlite_path, database_url=database_url, demo_team=demo_team,
+                            pilot_repos=(PILOT,) if github else (), mentor_github=("mentor-ana",))
+        transport = httpx.MockTransport(github.handle) if github else None
+        self.app = create_app(settings, clock=self.clock, github_transport=transport)
         self.client = TestClient(self.app)
 
     def __enter__(self) -> "Harness":
@@ -728,6 +772,88 @@ def test_metrics_history_reaches_back_to_the_bad_release_and_shows_recovery():
     labels = [e["label"] for e in history["events"]]
     assert labels == [f"bad release {SPEC.releases.bad}", "paged", "rollback"]
     assert history["events"][0]["sim_time"] == f"{SPEC.releases.bad_at}:00"
+
+
+# ---------- GitHub: PR verify and real diffs ----------
+
+def _verify(h: Harness, url: str = PR_URL, headers: dict = MORNING):
+    return h.client.post("/api/pr/verify", json={"incident_id": INC, "pr_url": url}, headers=headers)
+
+
+def test_verified_pr_unlocks_deploy_fix_and_scores():
+    with Harness(github=FakeGitHub()) as h:
+        h.night_shift()
+        h.hand_over()
+        response = _verify(h)
+        assert response.status_code == 200, response.text
+        pr = response.json()["pr"]
+        assert pr["merged"] and pr["ci"] == "success" and pr["ci_passed"] is True
+        assert pr["substantive_review"] is True and pr["mentor_review"] == "mentor-ana"
+        assert pr["reviewers"] == ["tung-gh", "mentor-ana"] and pr["author"] == "duy-gh"
+        assert "deploy_fix" in response.json()["allowed_actions"]
+        h.ok("deploy_fix", headers=MORNING)
+        body = h.client.post("/api/debrief", json={"incident_id": INC, "answer": EXAMPLE_ANSWER}, headers=RELAY).json()
+        assert body["total"] == 20
+        assert h.client.get("/health").json()["pilot_repo"] == PILOT
+
+
+def test_pr_not_ready_until_merged_and_green():
+    cases = (({"merged": False}, True), ({"ci": "failure"}, False), ({"ci": "pending"}, None), ({"ci": None}, None))
+    for kwargs, ci_passed in cases:
+        with Harness(github=FakeGitHub(**kwargs)) as h:
+            h.ok("answer")
+            pr = _verify(h).json()["pr"]
+            assert pr["ci_passed"] is ci_passed, kwargs
+            assert h.act("deploy_fix").json()["code"] == "pr_not_ready"
+
+
+def test_only_real_reviews_by_someone_else_count():
+    short = [{"user": {"login": "tung-gh"}, "state": "APPROVED", "body": "LGTM"},
+             {"user": {"login": "duy-gh"}, "state": "COMMENTED", "body": "x" * 100}]  # self-review
+    with Harness(github=FakeGitHub(reviews=short)) as h:
+        assert _verify(h).json()["pr"]["substantive_review"] is False
+    inline = [{"user": {"login": "tung-gh"}, "body": "This line still reads the profile tier"}]
+    with Harness(github=FakeGitHub(reviews=short, comments=inline)) as h:
+        assert _verify(h).json()["pr"]["substantive_review"] is True
+
+
+def test_pr_verify_refuses_other_repos_and_handles_github_down():
+    with Harness(github=FakeGitHub()) as h:
+        assert _verify(h, "https://github.com/someone/else/pull/1").json()["code"] == "repo_not_allowed"
+        assert _verify(h, "not a url").json()["code"] == "bad_pr_url"
+        assert _verify(h, headers=RELAY).status_code == 403
+        incident_id = _start(h, []).json()["incident_id"]
+        outsider = h.client.post("/api/pr/verify", json={"incident_id": incident_id, "pr_url": PR_URL},
+                                 headers=MORNING)
+        assert outsider.json()["code"] == "not_teammate"
+    with Harness(github=FakeGitHub(down=True)) as h:
+        response = _verify(h)
+        assert response.status_code == 502 and response.json()["code"] == "github_unavailable"
+    with Harness() as h:  # PILOT_REPOS empty
+        assert _verify(h).json()["code"] == "github_off"
+
+
+def test_github_reads_are_cached():
+    github = FakeGitHub()
+    with Harness(github=github) as h:
+        _verify(h)
+        calls = github.calls
+        _verify(h)
+        assert github.calls == calls
+
+
+def _bad_release(h: Harness) -> dict:
+    releases = h.client.get(f"/api/incident/{INC}/deploys").json()["releases"]
+    return next(r for r in releases if r["version"] == SPEC.releases.bad)
+
+
+def test_deploys_use_the_real_diff_from_github_with_offline_fallback():
+    with Harness(github=FakeGitHub()) as h:
+        bad = _bad_release(h)
+        assert bad["diff_source"] == "github" and bad["files"][0]["patch"] == "@@ real @@"
+    with Harness(github=FakeGitHub(down=True)) as h:
+        bad = _bad_release(h)
+        assert bad["diff_source"] == "scenario" and 'profile["tier"]' in bad["files"][0]["patch"]
 
 
 # ---------- starting incidents and teammates ----------

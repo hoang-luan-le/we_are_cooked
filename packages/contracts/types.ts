@@ -25,9 +25,14 @@ export interface NextHint { topic: string | null; hint: string }
 export interface PullRequestInfo {
   number: number;
   merged: boolean;
-  ci_passed: boolean | null;
-  substantive_review: boolean;
-  mentor_review: string | null;
+  ci_passed: boolean | null;               // null = CI running or not found
+  substantive_review: boolean;             // a non-author review with 40+ chars or inline comments
+  mentor_review: string | null;            // GitHub login of the mentor (MENTOR_GITHUB) who reviewed
+  url: string;
+  author: string;                          // GitHub login, lowercase
+  head_sha: string;
+  ci: "success" | "failure" | "pending" | "none";
+  reviewers: string[];                     // GitHub logins, author excluded
 }
 
 // ---- shift handoff (typed; night pair writes, morning pair rates) ----
@@ -52,7 +57,8 @@ export type ErrorCode =
   | "answer_first" | "already_rolled_back" | "pr_not_ready" | "not_allowed_now" | "unknown_action"
   | "unknown_panel" | "text_required" | "text_too_long" | "idempotency_conflict" | "debrief_not_ready"
   | "handoff_not_ready" | "handoff_incomplete" | "handoff_rated" | "not_night_pair" | "night_pair_cannot_rate"
-  | "no_handoff" | "not_teammate" | "unknown_handle" | "not_morning_pair";
+  | "no_handoff" | "not_teammate" | "unknown_handle" | "not_morning_pair"
+  | "github_off" | "bad_pr_url" | "repo_not_allowed" | "github_unavailable";
 export interface ApiError { code: ErrorCode; detail: string }        // auth/404/validation errors have only `detail`
 
 // ---- rubric (0/2/4 each, out of 20) ----
@@ -180,3 +186,8 @@ export interface MetricsHistory {
   events: { label: string; sim_time: string }[];
   baseline: Metrics;
 }
+
+// ---- POST /api/pr/verify -> IncidentState (teammates only) ----
+// Reads the PR from GitHub (PILOT_REPOS only) and records it; merged + CI success unlocks deploy_fix.
+// 422 bad_pr_url | repo_not_allowed, 502 github_unavailable, 503 github_off.
+export interface VerifyPrRequest { incident_id: string; pr_url: string } // https://github.com/<owner>/<repo>/pull/<n>

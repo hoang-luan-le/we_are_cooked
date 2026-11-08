@@ -29,9 +29,10 @@ python tests/test_smoke.py                 # must print ALL GOOD before you push
 | `db.py` / `engine/snapshot.py` | SQLite tables `incidents`, `cohorts`, `cohort_members` (file in `data/`, gitignored) |
 | `engine/panels.py` | Logs (deterministic per second), deploy history + diff, runbooks, metrics history |
 | `routes/` | `/logs`, `/deploys`, `/runbooks`, `/metrics/history`; `/api/incident/start`, `/api/incident/{id}`, `/facts`, `/action`, `/hint`, `/handoff` (+ `/rating`), `/api/debrief`, `/api/cohorts`, `/api/demo/reset` |
+| `github_client.py` / `routes/pr.py` | Read-only GitHub (PILOT_REPOS allowlist, 15 s cache): `POST /api/pr/verify`, real release diffs |
 | `cohorts.py` | Cohorts: create, join by code, members-only list |
 
 Contract: `packages/contracts/types.ts` and `dana-voice.md` §5.
 
 ## Not built yet
-PR verify (GitHub), Auth0 tokens, Tiger Data (Postgres) + metrics history, Adzuna, open-source issues.
+Pilot repo on GitHub (contents ready in `D:shopnorth-checkout`), Auth0 tokens, Tiger Data (Postgres) + metrics history, Adzuna, open-source issues.

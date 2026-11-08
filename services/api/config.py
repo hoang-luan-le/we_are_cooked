@@ -27,6 +27,9 @@ class Settings:
     cors_origins: tuple[str, ...] = ()   # empty = every origin (dev only)
     database_url: str = ""               # empty = local SQLite at sqlite_path
     sqlite_path: str = ":memory:"        # from_env() uses DEFAULT_SQLITE_PATH; tests keep memory
+    github_token: str = ""               # read-only; empty = public rate limits
+    pilot_repos: tuple[str, ...] = ()    # "owner/repo" allowlist; empty = GitHub features off
+    mentor_github: tuple[str, ...] = ()  # GitHub logins of mentors who agreed to review
 
     @property
     def demo_mode(self) -> bool:
@@ -46,6 +49,9 @@ class Settings:
             cors_origins=_origins(os.environ.get("CORS_ORIGINS", "")),
             database_url=os.environ.get("DATABASE_URL", "").strip(),
             sqlite_path=os.environ.get("SQLITE_PATH", "").strip() or str(DEFAULT_SQLITE_PATH),
+            github_token=os.environ.get("GITHUB_TOKEN", "").strip(),
+            pilot_repos=_handles(os.environ.get("PILOT_REPOS", "")),
+            mentor_github=_handles(os.environ.get("MENTOR_GITHUB", "")),
         )
 
     def is_known_handle(self, handle: str) -> bool:

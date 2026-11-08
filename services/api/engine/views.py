@@ -37,6 +37,11 @@ def _pr(state: IncidentState) -> dict | None:
         "ci_passed": pr.ci_passed,
         "substantive_review": pr.substantive_review,
         "mentor_review": pr.mentor_review,
+        "url": pr.url,
+        "author": pr.author,
+        "head_sha": pr.head_sha,
+        "ci": pr.ci,
+        "reviewers": list(pr.reviewers),
     }
 
 
