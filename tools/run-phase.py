@@ -2,6 +2,7 @@
 """Run the current Incident Lab phase on Tung's fork and stop for PM review."""
 
 import fcntl
+import json
 import os
 from pathlib import Path
 import re
@@ -14,6 +15,12 @@ import time
 
 
 FORK = "thanhtungnguyen-dev/we_are_cooked"
+BOARD_TITLE = "Incident Lab Frontend Agent Board"
+MODEL_KEYS = (
+    "OPENAI_API_KEY", "CODEX_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY",
+    "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
+)
+TRACKING = "+refs/heads/*:refs/remotes/origin/*"
 LANES = {
     "CODEX": ("branch-codex", "reports/codex.md", ("apps/web/",),
               None),
@@ -24,10 +31,10 @@ LANES = {
 }
 
 
-def git(*args, cwd=None, check=True):
+def git(*args, cwd=None, check=True, input_text=None):
     return subprocess.run(
         ["git", *args], cwd=cwd, check=check, text=True, stdout=subprocess.PIPE,
-        stderr=None if check else subprocess.DEVNULL
+        stderr=None if check else subprocess.DEVNULL, input=input_text
     )
 
 
@@ -61,8 +68,8 @@ def read_queue(control, phase):
             raise ValueError(f"{role} is not authorized to run")
         if not re.fullmatch(rf"{phase}-{role}-[A-Z0-9-]+", task):
             raise ValueError(f"Invalid command ID for {role}: {task}")
-        if role == "CODEX" and field(lane, "Mode") != "WEB":
-            raise ValueError("CODEX must use Mode: WEB")
+        if role == "CODEX" and field(lane, "Mode") not in {"CLOUD", "WEB"}:
+            raise ValueError("CODEX must use Mode: CLOUD or WEB")
         commands.append((role, task, lane))
     return commands
 
@@ -132,10 +139,117 @@ def wait_for_codex(main, previous, branch, tip_ref, task, report):
         time.sleep(min(30, remaining))
 
 
-def run_lane(main, previous, role, task, lane, rules):
+def cli(*args, cwd=None, strip=True):
+    output = subprocess.run(
+        args, cwd=cwd, check=True, text=True, stdout=subprocess.PIPE, timeout=120
+    ).stdout
+    return output.strip() if strip else output
+
+
+def prepare_board():
+    cli("gh", "auth", "status", "--hostname", "github.com")
+    repo = json.loads(cli("gh", "repo", "view", FORK, "--json", "hasIssuesEnabled"))
+    if not repo["hasIssuesEnabled"]:
+        raise RuntimeError("Enable Issues on the fork under Settings > General > Features, then restart.")
+    issues = json.loads(cli(
+        "gh", "issue", "list", "--repo", FORK, "--state", "open",
+        "--json", "number,title", "--limit", "100"
+    ))
+    matches = [str(issue["number"]) for issue in issues if issue["title"] == BOARD_TITLE]
+    if len(matches) > 1:
+        raise RuntimeError("More than one open Agent Board matches. Keep one open and restart.")
+    if matches:
+        return matches[0]
+    issue_url = cli(
+        "gh", "issue", "create", "--repo", FORK, "--title", BOARD_TITLE, "--body",
+        "Frontend phase handoffs. PHASE_CONTROL.md on the fork's main controls execution. "
+        "This public board records status, report links and command IDs. Tung reviews each "
+        "completed phase and decides when to merge and open the next one."
+    )
+    match = re.fullmatch(rf"https://github\.com/{re.escape(FORK)}/issues/(\d+)", issue_url)
+    if not match:
+        raise RuntimeError("GitHub did not return an issue URL. Inspect Issues before restarting.")
+    issue = match[1]
+    try:
+        cli("gh", "issue", "pin", issue, "--repo", FORK)
+    except (subprocess.SubprocessError, OSError):
+        print(f"Board created at {issue_url}. Pin it from GitHub if needed.", flush=True)
+    return issue
+
+
+def board_post(issue, event, body):
+    marker = f"<!-- incident-lab:{event} -->"
+    data = json.loads(cli("gh", "issue", "view", issue, "--repo", FORK, "--json", "comments"))
+    if any(marker in comment["body"] for comment in data["comments"]):
+        return
+    url = cli("gh", "issue", "comment", issue, "--repo", FORK, "--body", f"{body}\n\n{marker}")
+    print(url, flush=True)
+
+
+def run_cloud(main, branch, base, remote, task, prompt, checkout, state_dir):
+    if not shutil.which("codex"):
+        raise RuntimeError("Install Codex CLI and sign in with ChatGPT before running CLOUD mode.")
+    if "chatgpt" not in cli("codex", "login", "status").lower():
+        raise RuntimeError("Sign in to Codex CLI with ChatGPT for CLOUD mode.")
+    cloud_help = cli("codex", "cloud", "--help")
+    if not all(re.search(rf"^\s+{name}\b", cloud_help, re.M) for name in ("exec", "status", "diff")):
+        raise RuntimeError("Update Codex CLI to a version with cloud exec, status and diff.")
+    if "--branch" not in cli("codex", "cloud", "exec", "--help"):
+        raise RuntimeError("Update Codex CLI to a version with cloud exec --branch.")
+    env_id = os.environ.get("INCIDENT_CODEX_ENV")
+    if not env_id:
+        raise RuntimeError("Set INCIDENT_CODEX_ENV to the published Codex Cloud environment for this fork.")
+    state_path = state_dir / f"{task}.json"
+    if state_path.exists():
+        state = json.loads(state_path.read_text())
+        if state["base"] != base or state["environment"] != env_id:
+            raise RuntimeError(f"Cloud task {task} has a different base or environment. Check {state_path}.")
+        if not state["url"]:
+            raise RuntimeError(f"Cloud submission for {task} is uncertain. Check Codex Cloud before issuing a new ID.")
+    else:
+        check_main(main)
+        if remote != base:
+            git("push", "--no-follow-tags", "origin", f"{base}:refs/heads/{branch}", cwd=checkout)
+        state_dir.mkdir(exist_ok=True)
+        state = {"base": base, "environment": env_id, "url": None}
+        # Record the attempt before sending it, so ambiguous submissions never auto-repeat.
+        state_path.write_text(json.dumps(state))
+        output = cli("codex", "cloud", "exec", "--env", env_id, "--branch", branch, prompt, cwd=checkout)
+        matches = re.findall(r"^https://chatgpt\.com/codex/tasks/[A-Za-z0-9_-]+$", output, re.M)
+        if len(matches) != 1:
+            raise RuntimeError(f"Cloud task URL could not be confirmed. Check Codex Cloud for {task}.")
+        state["url"] = matches[0]
+        temporary = state_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(state))
+        temporary.replace(state_path)
+    url = state["url"]
+    print(f"{task}: {url}", flush=True)
+    deadline = time.monotonic() + 2700
+    while True:
+        check_main(main)
+        status = cli("codex", "cloud", "status", url, cwd=checkout)
+        if re.search(r"^\[(READY|APPLIED)\]", status, re.M):
+            break
+        if re.search(r"^\[ERROR\]", status, re.M):
+            raise RuntimeError(f"Codex Cloud reported an error for {task}. Review {url}.")
+        if not re.search(r"^\[PENDING\]", status, re.M):
+            raise RuntimeError(f"Could not recognize Codex Cloud status for {task}. Review {url}.")
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError(f"Codex Cloud still running for {task}. Restart to resume {url}.")
+        time.sleep(min(20, remaining))
+    diff = cli("codex", "cloud", "diff", url, cwd=checkout, strip=False)
+    if not diff:
+        raise RuntimeError(f"Codex Cloud returned no changes for {task}. Review {url}.")
+    git("apply", "--check", "-", cwd=checkout, input_text=diff)
+    git("apply", "-", cwd=checkout, input_text=diff)
+
+
+def run_lane(main, previous, role, task, lane, rules, state_dir):
     branch, report, prefixes, command = LANES[role]
     tip_ref = f"refs/remotes/origin/{branch}"
-    if role == "CODEX":
+    cloud = role == "CODEX" and field(lane, "Mode") == "CLOUD"
+    if role == "CODEX" and not cloud:
         return wait_for_codex(main, previous, branch, tip_ref, task, report)
     remote = git("rev-parse", "--verify", "--quiet", tip_ref, check=False).stdout.strip()
     ready = published_report(remote, previous, role, task, report)
@@ -143,7 +257,7 @@ def run_lane(main, previous, role, task, lane, rules):
         return ready
 
     check_main(main)
-    if not shutil.which(command[0]):
+    if command and not shutil.which(command[0]):
         raise RuntimeError(f"{command[0]} is missing. Install and authenticate it on the runner.")
     checkout = Path(tempfile.mkdtemp(prefix=f"incident-{role.lower()}-"))
     print(f"Running {task} in {checkout}", flush=True)
@@ -153,13 +267,11 @@ def run_lane(main, previous, role, task, lane, rules):
     base = git("rev-parse", "HEAD", cwd=checkout).stdout.strip()
     allowed = () if field(lane, "Mode", "WRITE") == "REPORT_ONLY" else prefixes
     scope = ", ".join((*allowed, report))
-    run_agent(
-        command,
-        f"""Complete only {task} in the supplied worktree.
+    prompt = f"""Complete only {task} for {FORK} on branch {branch}.
 The phase runner handles Git fetch, merge, commit and push. Do not do those operations,
-change branches, start another agent, open a PR, or write outside {scope}.
-The worktree already contains the previous lane's verified commit. Report-only mode
-limits changes to the report. Complete your own checks in the scope of the task.
+change branches, start another agent, open a PR, post an issue comment, or write outside {scope}.
+Your task is based on commit {base}. Stop if your checkout is different.
+The checkout already contains the previous lane's verified commit.
 Write {report}. Its first two lines must be STATUS: READY_FOR_REVIEW or STATUS: BLOCKED,
 then COMMAND_ID: {task}. Use headings ### A., ### B. and ### C. for the teaching report.
 State real evidence, findings and limits, including fixture versus live API verification.
@@ -168,9 +280,11 @@ End with a teach-back question and a verification step. Keep public content safe
 {rules}
 
 Current assignment:
-{lane}""",
-        checkout,
-    )
+{lane}"""
+    if cloud:
+        run_cloud(main, branch, base, remote, task, prompt, checkout, state_dir)
+    else:
+        run_agent(command, prompt, checkout)
     if (git("rev-parse", "HEAD", cwd=checkout).stdout.strip() != base
             or git("symbolic-ref", "--quiet", "HEAD", cwd=checkout, check=False).returncode != 1):
         raise RuntimeError(f"{task} changed Git history in {checkout}")
@@ -202,7 +316,7 @@ Current assignment:
     return commit, report
 
 
-def main(phase):
+def main(phase=None):
     origins = git("config", "--get-all", "remote.origin.url").stdout.splitlines()
     push_urls = git("config", "--get-all", "remote.origin.pushurl", check=False).stdout.splitlines()
     allowed = {f"https://github.com/{FORK}", f"git@github.com:{FORK}", f"ssh://git@github.com/{FORK}"}
@@ -213,25 +327,71 @@ def main(phase):
     common = Path(git("rev-parse", "--git-common-dir").stdout.strip())
     with (common / "incident-phase.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        git("fetch", "--quiet", "--prune", "origin", "+refs/heads/*:refs/remotes/origin/*")
-        main_commit = git("rev-parse", "origin/main").stdout.strip()
-        control = git("show", f"{main_commit}:PHASE_CONTROL.md").stdout
-        rules = git("show", f"{main_commit}:AGENTS.md").stdout
-        previous = main_commit
-        reports = []
-        for role, task, lane in read_queue(control, phase):
-            previous, report = run_lane(main_commit, previous, role, task, lane, rules)
-            reports.append(f"https://github.com/{FORK}/blob/{previous}/{report}")
-        check_main(main_commit)
-        print("PHASE READY_FOR_REVIEW. Review the reports and the combined changes before opening another phase.")
-        print("\n".join(reports))
+        if any(os.environ.get(key) for key in MODEL_KEYS):
+            raise ValueError("Use account sign-in. Unset model API key or token overrides before running.")
+        for program in ("gh", "git"):
+            if not shutil.which(program):
+                raise RuntimeError(f"Install {program} before starting.")
+        issue = prepare_board()
+        print(f"Agent Board: https://github.com/{FORK}/issues/{issue}", flush=True)
+        last_control = None
+        while True:
+            try:
+                git("fetch", "--quiet", "--prune", "origin", TRACKING)
+                main_commit = git("rev-parse", "origin/main").stdout.strip()
+                control_id = git("rev-parse", f"{main_commit}:PHASE_CONTROL.md").stdout.strip()
+                if phase or control_id != last_control:
+                    last_control = control_id
+                    control = git("show", f"{main_commit}:PHASE_CONTROL.md").stdout
+                    current = field(control, "Phase hiện tại").split()[0]
+                    if phase or field(control, "Trạng thái chung") == "IN_PROGRESS":
+                        run_phase(main_commit, phase or current, control, issue, common.resolve())
+                    else:
+                        print(f"Phase {current}: waiting for PM authorization.", flush=True)
+            except (ValueError, RuntimeError, OSError, subprocess.SubprocessError) as error:
+                if phase:
+                    raise
+                print(f"Phase stopped: {error}", file=sys.stderr, flush=True)
+            if phase:
+                return
+            time.sleep(20)
+
+
+def run_phase(main_commit, phase, control, issue, common):
+    queue = read_queue(control, phase)
+    rules = git("show", f"{main_commit}:AGENTS.md").stdout
+    previous = main_commit
+    reports = []
+    for index, (role, task, lane) in enumerate(queue):
+        next_role = queue[index + 1][0].lower() if index + 1 < len(queue) else "tung"
+        try:
+            previous, report = run_lane(main_commit, previous, role, task, lane, rules, common / "incident-cloud")
+        except (ValueError, RuntimeError, OSError, subprocess.SubprocessError):
+            try:
+                board_post(issue, f"{task}:{main_commit}:blocked",
+                           f"From: runner\nTo: tung\nTask: {task}\nStatus: BLOCKED\n\n"
+                           "The phase stopped at this task. Check the runner output before issuing a retry.")
+            except (ValueError, OSError, subprocess.SubprocessError) as error:
+                print(f"Could not post to Agent Board: {error}", file=sys.stderr, flush=True)
+            raise
+        link = f"https://github.com/{FORK}/blob/{previous}/{report}"
+        reports.append(link)
+        board_post(issue, f"{task}:{previous}:review",
+                   f"From: {role.lower()}\nTo: {next_role}\nTask: {task}\nStatus: REVIEW\n\nReport: {link}")
+    check_main(main_commit)
+    board_post(issue, f"phase-{phase}:{main_commit}:{previous}:ready",
+               f"From: runner\nTo: tung\nTask: PHASE-{phase}\nStatus: REVIEW\n\n"
+               "PHASE READY_FOR_REVIEW. Review bugs and the teaching reports before opening another phase.\n\n"
+               + "\n".join(f"- {link}" for link in reports))
+    print("PHASE READY_FOR_REVIEW. Waiting for PM approval.", flush=True)
+    print("\n".join(reports), flush=True)
 
 
 if __name__ == "__main__":
     try:
-        if len(sys.argv) != 2 or not re.fullmatch(r"[0-9]{2}", sys.argv[1]):
-            raise ValueError("Usage: python3 tools/run-phase.py 01")
-        main(sys.argv[1])
+        if len(sys.argv) != 2 or not (sys.argv[1] == "--watch" or re.fullmatch(r"[0-9]{2}", sys.argv[1])):
+            raise ValueError("Usage: python3 tools/run-phase.py --watch  (or pass a phase such as 01)")
+        main(None if sys.argv[1] == "--watch" else sys.argv[1])
     except (ValueError, RuntimeError, OSError, subprocess.SubprocessError, KeyboardInterrupt) as error:
         print(f"Phase stopped: {error}", file=sys.stderr)
         sys.exit(1)

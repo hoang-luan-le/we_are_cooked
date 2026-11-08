@@ -6,7 +6,7 @@
 - **Repo điều phối:** `thanhtungnguyen-dev/we_are_cooked`
 - **Agent chỉnh file:** RUNNER
 
-Tung đổi trạng thái chung thành `IN_PROGRESS` và khởi động runner khi muốn bắt đầu. Tung mở CODEX Web một lần cho lane đầu. Runner đợi báo cáo từ GitHub, sau đó gọi các CLI theo thứ tự. Chỉ một agent chỉnh file cho Tung tại một thời điểm. Khi hàng đợi hết, Tung kiểm bug, đọc báo cáo và quyết định có mở phase mới hay không. Dùng ID mới cho task mới hoặc yêu cầu sửa.
+Tung dùng `IN_PROGRESS` để cấp lệnh. Watcher phát hiện thay đổi trên GitHub, gọi CODEX Cloud và các lane CLI theo thứ tự, rồi đăng báo cáo lên Issue Board. Chỉ một agent chỉnh file cho Tung tại một thời điểm. Khi hàng đợi hết, Tung kiểm bug, đọc báo cáo và quyết định có mở phase mới hay không. Dùng ID mới cho task mới hoặc yêu cầu sửa.
 
 ## Hàng đợi tự động
 
@@ -19,7 +19,7 @@ Tung đổi trạng thái chung thành `IN_PROGRESS` và khởi động runner k
 - **Report:** `reports/codex.md`
 - **Status:** WORKING
 - **Command-ID:** `01-CODEX-01D-02`
-- **Mode:** WEB
+- **Mode:** CLOUD
 - **Task:** Kiểm tra code và contract hiện có trên GitHub. Dựng hoặc dùng lại nền Next.js tối thiểu cho luồng Night. Ưu tiên đường đi từ call screen đến dashboard, logs, deploy diff và rollback có recovery. Landing chỉ cần đường vào rõ ràng để kiểm tra luồng này. Chuẩn bị điểm nối captions và text cùng Luan theo hợp đồng đã xác nhận.
 - **Đầu vào:** Duy cung cấp API URL, demo incident ID, cách xác thực và ví dụ action. Dùng contract voice hiện có trong `packages/contracts/dana.ts` và `packages/contracts/dana-voice.md` để xác định điểm nối. Dùng dev fixture có nhãn khi thiếu đầu vào để làm phần UI. Giữ việc xác minh API thật là mục riêng.
 - **Tiêu chí bàn giao:** Lệnh khởi động, build/typecheck và smoke test browser. Tách bằng chứng màn hình chạy bằng fixture khỏi kết quả test API thật. Khi có API, đi qua Answer, đọc thông tin incident, rollback thử trên incident được cấp và xác nhận charts phục hồi cùng trạng thái discounts OFF.
