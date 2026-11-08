@@ -65,6 +65,19 @@ def _read_pull(github: GitHubClient | None, pr_url: str) -> PullInfo:
         raise ActionRejected(502, "github_unavailable", "Couldn't reach GitHub. Try again in a moment.") from None
 
 
+@router.get("/pilot")
+def pilot_repo(request: Request, rt: Runtime = Depends(get_runtime)) -> dict:
+    """Where the Morning pair fixes the bug: the team's pilot repo (public), and the branch PRs must target."""
+    repos = request.app.state.settings.pilot_repos
+    repo = repos[0] if repos else None
+    return {
+        "repo": repo,
+        "url": f"https://github.com/{repo}" if repo else None,
+        "clone_url": f"https://github.com/{repo}.git" if repo else None,
+        "base_branch": rt.scenario.spec.pilot.base_branch,
+    }
+
+
 @router.post("/verify")
 def verify_pr(
     body: VerifyRequest, request: Request, actor: Actor = Depends(require_member), rt: Runtime = Depends(get_runtime),

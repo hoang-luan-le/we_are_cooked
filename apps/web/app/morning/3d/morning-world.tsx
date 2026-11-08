@@ -5,8 +5,9 @@ import { useMemo, useState } from "react";
 import { office, type PanelId } from "../../world/world-contract";
 import { WorldShell } from "../../world/world-shell";
 import { MorningWorkspace } from "../morning-workspace";
+import type { Pilot } from "../pilot";
 
-type Team = { incidentId: string; user: string; relayBase: string; rehearsalGitHub: boolean };
+type Team = { incidentId: string; user: string; relayBase: string; rehearsalGitHub: boolean; pilot?: Pilot };
 const every = { ids: office.targets.map(target => target.id), walk: true, ringing: false };
 
 /** The office around the existing Morning workspace. Each desk opens that same workspace. */

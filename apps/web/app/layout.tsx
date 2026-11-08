@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
+import { SessionBar } from "./session-bar";
 
 export const metadata: Metadata = {
   title: "Incident Lab",
@@ -10,7 +11,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body><SessionBar />{children}</body>
     </html>
   );
 }

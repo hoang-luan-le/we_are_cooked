@@ -275,3 +275,17 @@ export interface NextFixes {
   searches: { skill: string; issues: NextFixIssue[] }[];
   message?: string;
 }
+
+// ---- GET /api/me/incidents -> { incidents: MyIncident[] }  (your incidents; what is waiting on you) ----
+// Waiting-on-you rows first, then newest. Used by /morning and /morning/3d ("Your morning").
+export interface MyIncident {
+  incident_id: string; level: Level; phase: Phase; status: Status;
+  role: "night" | "morning" | "teammate";
+  handoff_ready: boolean;                  // the Night handoff is written: Morning can open
+  next_step: string | null;                // plain sentence, e.g. "Read and rate the Night handoff"
+  waiting_on_you: boolean;
+}
+
+// ---- GET /api/demo/team -> { team: string[] }  (demo mode only; 404 with Auth0) ----
+// The handles the web app's "Present as..." page (/session) offers. One presenter can switch identities.
+export interface DemoTeam { team: string[] }

@@ -259,3 +259,22 @@ button:active:not(:disabled), .button:active { transform: translateY(1px); }
 .phase-panel .service-facts dd { text-align: end; overflow-wrap: anywhere; min-width: 0; }
 .phase-panel .entry-levels legend { max-width: 100%; overflow-wrap: anywhere; }
 @media (max-width: 760px) { .phase-grid { grid-template-columns: 1fr; } }
+
+/* "Your morning": incidents handed to this person (app/morning/handed-to-you.tsx). */
+.handed-to-you section > * + * { margin-top: 12px; }
+.handed-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+.handed-list li > * + * { margin-top: 8px; }
+.handed-list .button { margin-top: 12px; }
+
+/* Morning: "How to fix it in VS Code" guide (app/morning/fix-in-vscode.tsx). */
+.fix-guide ol { padding-left: 1.25rem; display: grid; gap: 14px; margin-top: 12px; }
+.fix-guide li p { margin-top: 4px; color: var(--muted); }
+.fix-command { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+.fix-command code { overflow-wrap: anywhere; padding: 4px 8px; border-radius: 6px; background: rgba(127, 127, 127, 0.12); }
+.fix-command pre { margin: 0; white-space: pre-wrap; }
+.view-switch { margin-left: auto; font-weight: 600; }
+
+/* One-app shell: session bar on every page (app/session-bar.tsx). */
+.session-bar { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; justify-content: flex-end;
+  padding: 8px clamp(16px, 4vw, 32px); font-size: 0.9rem; border-bottom: 1px solid rgba(127, 127, 127, 0.25); }
+.session-hint { color: var(--muted); }
