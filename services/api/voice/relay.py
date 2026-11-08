@@ -1,17 +1,20 @@
-"""WS /ws/voice: browser <-> this server <-> Deepgram (voice) or Gemini (text fallback).
+"""WS /ws/voice: browser <-> this server <-> Deepgram.
+
+mode=voice: audio + captions. mode=text: typed only, still through Deepgram (option A);
+if Deepgram is unavailable, scripted Dana from the backend takes over (option B, text_mode.py).
 
 Speaks the contract in packages/contracts/dana-voice.md. Keys never reach the browser.
 """
 import asyncio
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import websockets
 from fastapi import APIRouter, WebSocket
 
 from .config import CALLS, DEEPGRAM_AGENT_URL, DEEPGRAM_API_KEY, LEVELS, LOG_DIR
-from .dana import CHECKING_LABEL, build_settings, run_tool
+from .dana import CHECKING_LABEL, build_settings, prepare_call, run_tool
 from .text_mode import text_call
 
 router = APIRouter()
@@ -25,6 +28,7 @@ class Ctx:
     mode: str
     incident_id: str
     user: str
+    extra: dict = field(default_factory=dict)  # per-call setup, e.g. the help hint
 
 
 class Link:
@@ -67,7 +71,10 @@ async def dana_socket(ws: WebSocket):
     link.log("start", **ctx.__dict__)
     reason = "error"
     try:
-        reason = await (voice_call(link) if ctx.mode == "voice" else text_call(link))
+        ctx.extra = await prepare_call(ctx)
+        if ctx.extra:
+            link.log("prepared", **ctx.extra)
+        reason = await (voice_call(link) if ctx.mode == "voice" else text_call(link, voice_call))
     finally:
         link.log("end", reason=reason)
         await link.send(type="call_ended", reason=reason)
@@ -85,19 +92,28 @@ async def _connect_deepgram():
         return await websockets.connect(DEEPGRAM_AGENT_URL, extra_headers=headers, max_size=None, open_timeout=10)
 
 
-async def voice_call(link: Link) -> str:
+async def voice_call(link: Link, text: bool = False) -> str:
+    """Deepgram call. text=True: no audio either way, typed input only (option A).
+
+    In text mode, failures return "fallback" (the caller switches to scripted Dana) instead of
+    telling the browser to switch modes.
+    """
     ctx = link.ctx
     if not DEEPGRAM_API_KEY:
+        if text:
+            return "fallback"
         await link.send(type="error", code="no_deepgram_key", message="DEEPGRAM_API_KEY is missing.", fallback="text")
         return "error"
     try:
         dg = await _connect_deepgram()
     except Exception as e:  # noqa: BLE001
         link.log("deepgram_connect_failed", error=repr(e))
+        if text:
+            return "fallback"
         await link.send(type="error", code="voice_unavailable", message="Couldn't reach the voice service.", fallback="text")
         return "error"
 
-    await dg.send(json.dumps(build_settings(ctx.call, ctx.level)))
+    await dg.send(json.dumps(build_settings(ctx.call, ctx.level, ctx.extra)))
     muted = False
     result = {"reason": "error"}
     end_requested = asyncio.Event()
@@ -111,13 +127,15 @@ async def voice_call(link: Link) -> str:
                 result["reason"] = "user_hung_up"
                 return
             if msg.get("bytes") is not None:
-                if not muted:
+                if not muted and not text:
                     await dg.send(msg["bytes"])
             elif msg.get("text"):
                 data = json.loads(msg["text"])
                 kind = data.get("type")
                 if kind == "text" and str(data.get("text", "")).strip():
                     link.log("user_typed", text=data["text"])
+                    if text:  # text mode: we echo the caption (Deepgram has no audio to transcribe)
+                        await link.send(type="caption", role="you", text=data["text"])
                     await dg.send(json.dumps({"type": "InjectUserMessage", "content": data["text"]}))
                 elif kind == "mute":
                     muted = bool(data.get("on"))
@@ -129,7 +147,7 @@ async def voice_call(link: Link) -> str:
         name = fn.get("name")
         if name in CHECKING_LABEL:
             await link.send(type="checking", what=CHECKING_LABEL[name])
-        content, end = await run_tool(name, fn.get("arguments", "{}"), ctx.incident_id)
+        content, end = await run_tool(name, fn.get("arguments", "{}"), ctx)
         link.log("tool", name=name, arguments=fn.get("arguments"), result=content[:500])
         await dg.send(json.dumps({"type": "FunctionCallResponse", "id": fn.get("id"), "name": name, "content": content}))
         if end:
@@ -139,15 +157,18 @@ async def voice_call(link: Link) -> str:
     async def dg_to_browser():
         async for raw in dg:
             if isinstance(raw, bytes):
-                await link.send_audio(raw)
+                if not text:
+                    await link.send_audio(raw)
                 continue
             d = json.loads(raw)
             kind = d.get("type")
             if kind == "SettingsApplied":
-                await link.send(type="ready", call=ctx.call, mode="voice")
+                await link.send(type="ready", call=ctx.call, mode="text" if text else "voice", engine="deepgram")
                 await link.send(type="status", state="listening")
             elif kind == "ConversationText":
                 role = "dana" if d.get("role") == "assistant" else "you"
+                if text and role == "you":
+                    continue  # already echoed when typed
                 link.log("said", role=role, text=d.get("content"))
                 await link.send(type="caption", role=role, text=d.get("content", ""))
             elif kind == "UserStartedSpeaking":
@@ -166,6 +187,9 @@ async def voice_call(link: Link) -> str:
                         asyncio.create_task(handle_function(fn))
             elif kind == "Error":
                 link.log("deepgram_error", detail=d)
+                if text:
+                    result["reason"] = "fallback"
+                    return
                 await link.send(type="error", code="voice_error",
                                 message=str(d.get("description", "Voice error")), fallback="text")
                 return
@@ -191,8 +215,11 @@ async def voice_call(link: Link) -> str:
         for t in done:
             if not t.cancelled() and t.exception():
                 link.log("stopped", error=repr(t.exception()))
-                await link.send(type="error", code="voice_dropped", message="The call dropped.", fallback="text")
-                result["reason"] = "error"
+                if text:
+                    result["reason"] = "fallback"
+                else:
+                    await link.send(type="error", code="voice_dropped", message="The call dropped.", fallback="text")
+                    result["reason"] = "error"
     finally:
         for t in tasks:
             t.cancel()

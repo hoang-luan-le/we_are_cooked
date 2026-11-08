@@ -1,4 +1,4 @@
-"""Who Dana is, per call and per level. Phase 1 = briefing; help and debrief are drafts for Phase 2.
+"""Who Dana is, per call and per level.
 
 Rule: nothing here may contain the root cause (tier, KeyError, guests...). Dana only knows
 what get_incident_facts returns. test_offline.py checks this.
@@ -50,18 +50,25 @@ This call: the 2:04 a.m. page.
   call you any time, say a short goodbye, then call end_call.
 """,
     "help": """
-This call: the learner pressed "Call Dana" because they want help.  (DRAFT, Phase 2)
-- Call get_incident_facts first and look at what they already found and hint_calls.
-- Give the smallest useful hint, one at a time, in this order, skipping steps already found:
-  1) look at the logs, 2) notice which customers are failing, 3) compare the deploy diff,
-  4) look at what the new code expects every customer to have.
-- Never give the fix or the code. Then say goodbye and call end_call.
+This call: the learner called you for help.
+- Unless they already told you, ask in one short question what they've found so far.
+  You may call get_incident_facts to see what they've found.
+- Then give the ONE hint under "Hint for this call", in your own words, fitted to their level.
+  Give only that hint. Don't skip ahead, and never give the cause, the code or the fix.
+- If they ask for more, say the same hint again, more concretely.
+- Then encourage them, say a short goodbye, and call end_call.
 """,
     "debrief": """
-This call: the debrief after the fix.  (DRAFT, Phase 2)
+This call: the debrief, now that checkout is healthy again.
+- Call get_incident_facts first so you know what happened.
 - Ask: "What would you tell our customers, and what would you tell the VP?"
-- Ask at most one follow-up question.
-- Give one line of honest, kind feedback, say thanks, then call end_call.
+- If their answer misses one of these: the impact, the cause, what was done, what's still risky,
+  ask ONE follow-up about the most important missing part. Never more than one follow-up.
+- Then call submit_update with everything they said to customers and the VP, in their own words.
+- It returns "strength" and "improve". Give ONE short line of feedback: one thing they did well
+  and one thing to do next time, in your own words. Don't read out numbers or skill names.
+- If submit_update returns an error, say the scorecard will be on their screen in a moment.
+- Thank them, say a short goodbye, and call end_call.
 """,
 }
 
@@ -97,12 +104,36 @@ Chat rules (always follow):
 """
 
 
-def build_prompt(call: str, level: str, text_mode: bool = False) -> str:
-    parts = [PERSONA, GROUNDING, LEVEL_STYLE[level], CALL_TASK[call], TEXT_RULES if text_mode else VOICE_RULES]
+NUDGE_TASK = """
+Why you're calling: nobody has given a status update for two minutes and the VP is asking.
+Start by asking for a quick update: how bad it is, what they've tried, what's next.
+Thank them for it, then continue with the hint below.
+"""
+
+NUDGE_GREETING = {
+    "explore": "Hi, it's Dana again. Quick check-in: how's it going? The VP is asking what to tell customers.",
+    "practice": "Hey, it's Dana. Any update? The VP is asking what to tell customers.",
+    "challenge": "Dana. I haven't heard from you in a while and the VP is asking. Where are we?",
+}
+
+NO_HINT = ("Try the next step of the checklist: how bad is it, when did it start, what changed right before, "
+           "stop the damage, then find and fix the real cause.")
+
+
+def build_prompt(call: str, level: str, text_mode: bool = False, extra: dict | None = None) -> str:
+    extra = extra or {}
+    parts = [PERSONA, GROUNDING, LEVEL_STYLE[level], CALL_TASK[call]]
+    if call == "help":
+        if extra.get("nudged"):
+            parts.append(NUDGE_TASK)
+        parts.append(f'Hint for this call: {extra.get("hint") or NO_HINT}')
+    parts.append(TEXT_RULES if text_mode else VOICE_RULES)
     if text_mode:
-        parts.append(f'You already said: "{greeting(call, level)}"')
+        parts.append(f'You already said: "{greeting(call, level, extra)}"')
     return "\n".join(p.strip() for p in parts)
 
 
-def greeting(call: str, level: str) -> str:
+def greeting(call: str, level: str, extra: dict | None = None) -> str:
+    if call == "help" and (extra or {}).get("nudged"):
+        return NUDGE_GREETING[level]
     return GREETING[call][level]
