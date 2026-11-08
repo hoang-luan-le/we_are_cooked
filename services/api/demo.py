@@ -3,7 +3,7 @@
     cd services/api
     python demo.py check                  # is everything ready? (never prints secret values)
     python demo.py reset-pilot            # bug back on the pilot repo's main + a fresh fix branch
-    python demo.py start                  # backend + Night window + Morning window, right settings
+    python demo.py start                  # backend + one app window (pick who you are on /session)
     python demo.py reset                  # inc_demo back to the 2:04 a.m. page (server must be running)
 
 Order on demo day: check -> reset-pilot -> start -> (play Night) -> open the fix PR only now -> Morning.
@@ -88,8 +88,7 @@ def check(pilot: Path) -> int:
             else "Pilot repo main already has the fix: run python demo.py reset-pilot")
     else:
         say(False, f"Pilot repo not found at {pilot} (use --pilot)")
-    for label, url in (("API", f"{API}/health"), ("Night window", "http://127.0.0.1:3000/"),
-                       ("Morning window", "http://127.0.0.1:3001/")):
+    for label, url in (("API", f"{API}/health"), ("App window", "http://127.0.0.1:3000/")):
         try:
             urllib.request.urlopen(url, timeout=3)
             say(True, f"{label} is running")
@@ -159,15 +158,15 @@ def start(build: bool) -> int:
     procs = [
         subprocess.Popen([sys.executable, "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"],
                          cwd=API_DIR),
+        # One window for the presenter: pick who you are on /session (Night engineer, then Morning engineer).
         subprocess.Popen([npx, "next", "start", "--hostname", "127.0.0.1", "--port", "3000"], cwd=WEB_DIR,
                          env=_web_env("demo-a")),
-        subprocess.Popen([npx, "next", "start", "--hostname", "127.0.0.1", "--port", "3001"], cwd=WEB_DIR,
-                         env=_web_env("tung")),
     ]
     time.sleep(6)
-    print("\nRunning. Night pair (demo-a): http://127.0.0.1:3000/start")
-    print("         Morning pair (tung): http://127.0.0.1:3001/morning  (lists what was handed over)")
-    print("         3D office:           http://127.0.0.1:3001/morning/3d")
+    print()
+    print("Running. Open http://127.0.0.1:3000/session and pick who you are (demo-a = Night engineer).")
+    print("         Your incidents: http://127.0.0.1:3000/home  (Continue opens the right stage)")
+    print("         After the handoff, 'Continue as the Morning engineer (tung)' switches you over.")
     print("Press Ctrl+C to stop everything.")
     try:
         while all(p.poll() is None for p in procs):

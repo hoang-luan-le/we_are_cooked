@@ -13,7 +13,7 @@ export default async function MorningWorldPage({ searchParams }: { searchParams:
   const { incident, fixture, no3d } = await searchParams;
   const forceFallback = no3d === "1";
   if (fixture === "1") return <MorningWorld forceFallback={forceFallback} />;
-  const config = teamEntryApi();
+  const config = (await teamEntryApi());
   if (config && !isTeamIncidentId(incident)) return <HandedToYou config={config} base="/morning/3d" />;
   if (!config || !isTeamIncidentId(incident)) {
     return <main className="landing"><h1>Morning office unavailable</h1><p>Open a team incident and complete the Night handoff to continue.</p>

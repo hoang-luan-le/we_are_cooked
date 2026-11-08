@@ -1,9 +1,9 @@
 import Link from "next/link";
-import type { demoApi } from "../night/demo-config";
+import type { DemoConfig } from "../night/demo-config";
 import { isTeamIncidentId } from "../night/team-entry-contract";
 import { AutoRefresh } from "./auto-refresh";
 
-type Config = NonNullable<ReturnType<typeof demoApi>>;
+type Config = DemoConfig;
 
 /** One row of GET /api/me/incidents (backend: services/api/engine/my_incidents.py). */
 type MyIncident = {

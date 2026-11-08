@@ -8,7 +8,7 @@ async function forward(request: Request, action?: ActionRequest) {
   const ids = new URL(request.url).searchParams.getAll("incident");
   const teamIncident = ids.length > 0;
   if (action?.action === "deploy_fix" && !teamIncident) return new Response(null, { status: 422 });
-  const config = teamIncident ? teamEntryApi() : demoApi();
+  const config = teamIncident ? (await teamEntryApi()) : (await demoApi());
   if (!config) return new Response(null, { status: 404 });
   if (teamIncident && (ids.length !== 1 || !isTeamIncidentId(ids[0]))) return new Response(null, { status: 422 });
   try {
@@ -25,7 +25,7 @@ async function forward(request: Request, action?: ActionRequest) {
   }
 }
 
-export function GET(request: Request) {
+export async function GET(request: Request) {
   return forward(request);
 }
 

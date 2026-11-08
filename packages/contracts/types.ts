@@ -285,3 +285,7 @@ export interface MyIncident {
   next_step: string | null;                // plain sentence, e.g. "Read and rate the Night handoff"
   waiting_on_you: boolean;
 }
+
+// ---- GET /api/demo/team -> { team: string[] }  (demo mode only; 404 with Auth0) ----
+// The handles the web app's "Present as..." page (/session) offers. One presenter can switch identities.
+export interface DemoTeam { team: string[] }

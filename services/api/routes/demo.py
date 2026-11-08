@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from auth import Actor, require_member
@@ -17,6 +17,15 @@ router = APIRouter(prefix="/api/demo", tags=["demo"])
 
 class ResetRequest(BaseModel):
     level: Literal[LEVELS] = "explore"  # type: ignore[valid-type]
+
+
+@router.get("/team")
+def demo_team(request: Request) -> dict:
+    """Demo mode only: the handles the web app may 'sign in as' (Auth0 mode answers 404)."""
+    settings = request.app.state.settings
+    if not settings.demo_mode:
+        raise HTTPException(status_code=404, detail="Not in demo mode.")
+    return {"team": list(settings.demo_team)}
 
 
 @router.post("/reset")

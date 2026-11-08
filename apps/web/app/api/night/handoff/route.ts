@@ -5,7 +5,7 @@ import { isTeamIncidentId } from "../../../night/team-entry-contract";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const config = teamEntryApi();
+  const config = (await teamEntryApi());
   if (!config) return new Response(null, { status: 404 });
   const ids = new URL(request.url).searchParams.getAll("incident");
   if (ids.length !== 1 || !isTeamIncidentId(ids[0])) return new Response(null, { status: 422 });

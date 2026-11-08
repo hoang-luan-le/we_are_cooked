@@ -1518,6 +1518,13 @@ def test_cors_lets_the_web_app_call_the_api():
         assert "access-control-allow-origin" not in _preflight(h, "https://evil.example").headers
 
 
+def test_demo_team_lists_who_you_can_sign_in_as():
+    with Harness() as h:
+        assert h.client.get("/api/demo/team").json() == {"team": list(DEFAULT_DEMO_TEAM)}
+    with Harness(auth0=FakeAuth0()) as h:
+        assert h.client.get("/api/demo/team").status_code == 404
+
+
 def test_voice_socket_is_mounted_on_the_same_app():
     with Harness() as h:
         with h.client.websocket_connect("/ws/voice?call=nope") as ws:

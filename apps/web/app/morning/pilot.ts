@@ -1,11 +1,11 @@
-import type { demoApi } from "../night/demo-config";
+import type { DemoConfig } from "../night/demo-config";
 
 /** The team's pilot repo (GET /api/pr/pilot): where the Morning pair fixes the bug. */
 export type Pilot = { repo: string; url: string; clone_url: string; base_branch: string };
 
 const GITHUB_REPO = /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
-export async function loadPilot(config: NonNullable<ReturnType<typeof demoApi>>): Promise<Pilot | undefined> {
+export async function loadPilot(config: DemoConfig): Promise<Pilot | undefined> {
   try {
     const response = await fetch(new URL("/api/pr/pilot", config.origin), {
       headers: { "X-Demo-User": config.user }, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(6000),

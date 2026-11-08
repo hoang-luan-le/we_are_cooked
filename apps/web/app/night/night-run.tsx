@@ -267,6 +267,15 @@ export function NightRun({ apiUser, relayBase, entry, incidentId, onStage }: { a
             {api.snapshot ? <TeamEvidence snapshot={api.snapshot} pending={api.pending || api.readError} onAction={perform} /> : null}
             {incidentId && apiUser && incident ? <NightHandoff incident={incident} user={apiUser}
               unavailable={api.pending || api.readError} onSave={api.saveHandoff} /> : null}
+            {incidentId && incident?.handoff?.morning_pair[0] && incident.handoff.morning_pair[0] !== apiUser ? (
+              <form method="post" action="/api/session" className="phase-link">
+                <input type="hidden" name="handle" value={incident.handoff.morning_pair[0]} />
+                <input type="hidden" name="next" value={`/incident/${incidentId}`} />
+                <button type="submit" className="button primary">
+                  Continue as the Morning engineer ({incident.handoff.morning_pair[0]})
+                </button>
+              </form>
+            ) : null}
             {incidentId && incident?.handoff ? <Link className="button primary phase-link"
               href={`/morning?incident=${encodeURIComponent(incidentId)}`}>Open Morning workspace</Link> : null}
           </>

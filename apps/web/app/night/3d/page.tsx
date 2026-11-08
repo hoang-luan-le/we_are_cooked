@@ -18,14 +18,14 @@ export default async function NightWorldPage({ searchParams }: { searchParams: P
     return <NightWorld entryId={offline && typeof params.entry === "string" ? params.entry : ""} run={{}} forceFallback={forceFallback} />;
   }
   if (params.incident !== undefined) {
-    const config = !offline && params.fixture === undefined ? teamEntryApi() : undefined;
+    const config = !offline && params.fixture === undefined ? (await teamEntryApi()) : undefined;
     if (!config || !isTeamIncidentId(params.incident)) {
       return <main className="landing"><h1>Team incident unavailable</h1><Link className="button" href="/start">Back to simulation entry</Link></main>;
     }
     const relayBase = devRelayBase() ?? config.origin.replace(/^http:/, "ws:");
     return <NightWorld run={{ apiUser: config.user, incidentId: params.incident, relayBase }} forceFallback={forceFallback} />;
   }
-  const config = offline ? undefined : demoApi();
+  const config = offline ? undefined : (await demoApi());
   const relayBase = offline ? undefined : devRelayBase() ?? config?.origin.replace(/^http:/, "ws:");
   return <NightWorld run={{ apiUser: config?.user, relayBase }} forceFallback={forceFallback} />;
 }
