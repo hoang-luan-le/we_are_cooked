@@ -4,22 +4,16 @@
 - **Trạng thái chung:** PAUSED
 - **Người điều phối:** Tung
 - **Repo điều phối:** `thanhtungnguyen-dev/we_are_cooked`
-- **Agent chỉnh file:** RUNNER
+- **Agent chỉnh file:** —
 
-Tung dùng `IN_PROGRESS` để cấp lệnh. Watcher phát hiện thay đổi trên GitHub, gọi CODEX Cloud và các lane CLI theo thứ tự, rồi đăng báo cáo lên Issue Board. Chỉ một agent chỉnh file cho Tung tại một thời điểm. Khi hàng đợi hết, Tung kiểm bug, đọc báo cáo và quyết định có mở phase mới hay không. Dùng ID mới cho task mới hoặc yêu cầu sửa.
-
-## Hàng đợi tự động
-
-1. CODEX
-2. ARGON
+File này lưu phạm vi và thứ tự tham khảo của v6. Tung giao việc và duyệt trên [Frontend Agent Board](https://github.com/thanhtungnguyen-dev/we_are_cooked/issues/1). Runner cũ đã dừng nhận lệnh.
 
 ## CODEX · GPT-6.1 Sol
 
 - **Branch:** `branch-codex`
 - **Report:** `reports/codex.md`
-- **Status:** WORKING
+- **Status:** ON_HOLD
 - **Command-ID:** `01-CODEX-01D-02`
-- **Mode:** CLOUD
 - **Task:** Kiểm tra code và contract hiện có trên GitHub. Dựng hoặc dùng lại nền Next.js tối thiểu cho luồng Night. Ưu tiên đường đi từ call screen đến dashboard, logs, deploy diff và rollback có recovery. Landing chỉ cần đường vào rõ ràng để kiểm tra luồng này. Chuẩn bị điểm nối captions và text cùng Luan theo hợp đồng đã xác nhận.
 - **Đầu vào:** Duy cung cấp API URL, demo incident ID, cách xác thực và ví dụ action. Dùng contract voice hiện có trong `packages/contracts/dana.ts` và `packages/contracts/dana-voice.md` để xác định điểm nối. Dùng dev fixture có nhãn khi thiếu đầu vào để làm phần UI. Giữ việc xác minh API thật là mục riêng.
 - **Tiêu chí bàn giao:** Lệnh khởi động, build/typecheck và smoke test browser. Tách bằng chứng màn hình chạy bằng fixture khỏi kết quả test API thật. Khi có API, đi qua Answer, đọc thông tin incident, rollback thử trên incident được cấp và xác nhận charts phục hồi cùng trạng thái discounts OFF.
@@ -29,9 +23,8 @@ Tung dùng `IN_PROGRESS` để cấp lệnh. Watcher phát hiện thay đổi tr
 
 - **Branch:** `branch-argon`
 - **Report:** `reports/argon.md`
-- **Status:** WORKING
+- **Status:** ON_HOLD
 - **Command-ID:** `01-ARGON-REVIEW-01`
-- **Mode:** REPORT_ONLY
 - **Task:** Sau khi CODEX bàn giao, đọc luồng Night 2D đã triển khai, chỉ ra lỗi hoặc thiếu sót về UI, keyboard, mobile, empty/loading/error và cách phân biệt fixture với API thật. Xếp mức độ phát hiện, ghi bước tái hiện, đề xuất sửa và bằng chứng đã xem. Chỉ viết báo cáo của ARGON, giữ code app cho Tung duyệt.
 - **Yêu cầu sửa từ PM:** Chưa có.
 
