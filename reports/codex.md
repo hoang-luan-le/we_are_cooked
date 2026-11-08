@@ -1,34 +1,36 @@
 STATUS: BLOCKED
 COMMAND_ID: 03-NIGHT-BOARD-01
 
-# Phase 03 Shared Night board and typed handoff
+# Phase 03 Shared Night board quality review
 
-The local team walkthrough is ready to review. The backend contract still lacks per-member Night roles and monotonic snapshot revisions. The work builds on the [earlier Phase 03 slice](https://github.com/thanhtungnguyen-dev/we_are_cooked/blob/2b0a4415a762ff582a05fec9a9cff72876bba7ef/reports/codex.md) and the [Phase 01 and 02 quality follow-up](https://github.com/thanhtungnguyen-dev/we_are_cooked/commit/febc0817fdefdd83611e1f10b905e97e699b09a6). The branch synced [fork main at 8989acd](https://github.com/thanhtungnguyen-dev/we_are_cooked/commit/8989acd317fa517fe547f7ad8136684f834b313f), which includes [Duy’s P0 backend at 474623a](https://github.com/hoang-luan-le/we_are_cooked/commit/474623ac2d5f6905714efc5012efe9c6066a320f).
+The implemented local Night board scores **92/100** and is ready to review. The full checkpoint remains blocked on role and revision contracts. This follow-up starts at [9cc04a3](https://github.com/thanhtungnguyen-dev/we_are_cooked/commit/9cc04a3a921353e4c18d82e796b6f4829ba5914b). The [panel and handoff integration report](https://github.com/thanhtungnguyen-dev/we_are_cooked/blob/9cc04a3a921353e4c18d82e796b6f4829ba5914b/reports/codex.md) documents the original flow against [Duy’s P0 backend](https://github.com/hoang-luan-le/we_are_cooked/commit/474623ac2d5f6905714efc5012efe9c6066a320f).
 
 ## A. Full-stack and React
 
-- [Night panels](../apps/web/app/night/night-panels.tsx) request server-filtered logs, release diffs, runbooks and a metric history window through the [same-origin panel bridge](../apps/web/app/api/night/panels/route.ts). The bridge checks the configured member and the incident’s unlocked panels before fetching evidence. Opening a panel still records the existing `open_panel` action for Dana’s fact ladder. Release diffs retain the backend’s GitHub or scenario source label. The baseline fixture and legacy local API keep their labeled samples.
-- The panel effect runs when its URL, refresh counter or relevant phase changes. Cleanup aborts the previous request. A failed refresh leaves the last loaded data visible and offers a retry in that panel. Log filtering waits for explicit submit. Reading or filtering one panel does not reset another panel or the shared finding draft. The current metric samples still follow the incident poll, while the expandable history supplies its own sample times and events.
-- [NightHandoff](../apps/web/app/night/night-handoff.tsx) collects what happened, current state, what was tried and remaining risks. It can include optional morning teammates. [The handoff bridge](../apps/web/app/api/night/handoff/route.ts) validates these fields and forwards to the backend. The backend decides who can write and when, and a confirmed save is visible to the second member through polling. [useNightApi](../apps/web/app/night/use-night-api.ts) serializes the handoff POST alongside other writes in that browser and aborts a preceding read before the write. The draft stays visible after a rejection. The handoff contract has no request idempotency key, so an unconfirmed result instructs the player to check the shared note before retrying.
+- [useNightApi](../apps/web/app/night/use-night-api.ts) clears the cached incident and action retry state when the team bridge confirms access loss. A temporary failure keeps the last snapshot and disables mutations. [Night panels](../apps/web/app/night/night-panels.tsx) also discard denied data, while a failed refresh can retain the last allowed result. The browser test removes an actual Morning teammate and confirms the shared note disappears.
+- [NightHandoff](../apps/web/app/night/night-handoff.tsx) captures the shared note and initial editor values on open. When polling observes another save, the draft stays in place and Save requires explicit review of the newer note. If a save response is lost, a later snapshot with the same normalized payload and author confirms the draft is already shared. The editor permits closing that draft without sending a second write.
+- [NightRun](../apps/web/app/night/night-run.tsx) displays the configured demo handle and team roster. After closing Help, it hides the call controls until a fresh read arrives. The refresh aborts a previous read when possible. This keeps a stale nudge from inviting another Help call. Help stays on one text relay socket and Debrief stays gated on the deployed fix. The [caption log](../apps/web/app/night/dana-briefing.tsx) separates programmatic scrolling from user scrolling so a burst of captions follows the latest line without pulling the user away from earlier lines.
 
 ## B. Data structures and algorithms
 
-The logs request caps results at 60. For n returned lines and L total characters, rendering and forming row keys costs O(n + L) time and O(n + L) space. A virtual list would help if the contract served thousands of rows at once. The metrics history endpoint returns a 20-minute window sampled every 30 seconds, so the historical table is small. Keeping it separate from the seven live samples lets a confirmed rollback update the live chart without refetching historical data on every poll.
+The handoff editor serializes the four text fields, author, simulated timestamp, optional morning handles and rating into a local comparison key. For n characters, building and comparing the key takes O(n) time and O(n) extra space. The handoff has a bounded size and the backend exposes no version. A server revision would make the precondition smaller and, more importantly, let the server reject a simultaneous overwrite before committing it. The browser comparison only catches changes it has already observed.
 
-The optional morning handles use a Set to remove duplicates while preserving first-seen order. For k entered handles, the deduplication is O(k) expected time and O(k) space. The form caps k at four, and the backend checks that every handle exists.
+## C. Readiness score and remaining contracts
 
-## C. System design and remaining contracts
+This review uses the same 100-point weighting as the Phase 01 and Phase 02 follow-up. Each score below reflects the tested local flow. The final eight points require full backend and provider evidence and received zero credit.
 
-The team API supplies shared evidence, teammate membership, allowed actions and rollback state. Its panel routes expose shared data and do not carry a per-member Night role. The demo bridge enforces membership and panel unlocks for its own reads. Duy’s direct API reads and Luan’s relay need their own authenticated scope before this can be used as a production permission boundary.
+| Criterion | Weight | Phase 03 evidence |
+| --- | ---: | --- |
+| Core player flow | 30 | **30**. Two team members opened API evidence, shared findings, saw one rollback recover, and exchanged the typed handoff. |
+| Failure and resume | 22 | **22**. Same-key finding and rollback retry, denied panel cache removal, former member access loss, preserved drafts, and lost handoff acknowledgement. |
+| Keyboard, touch and layout | 15 | **15**. Panel focus, keyboard-accessible details, clipboard, handoff focus, existing touch cases, and the shared board at 390 px. |
+| Feedback and state clarity | 15 | **15**. Source labels, separate live and historical metrics, current identity, local panel errors, draft conflict, caption following through bursts, and no stale nudge after Help. |
+| Build and regression evidence | 10 | **10**. Production build, typecheck, 18 browser cases, 81 backend smoke checks, and 9 offline voice checks. The caption burst case passed 16 repeated runs. |
+| Live and full contract evidence | 8 | **0**. Per-member Night roles, role-scoped authorization and evidence, snapshot revisions and write preconditions, live GitHub diff and Deepgram verification remain open. |
+| **Total** | **100** | **92** |
 
-Duy still needs a distinct Night Lead and Investigator contract, role-scoped evidence and action authorization, and a revision or equivalent ordering token. Browser cancellation prevents a known local race but cannot order snapshots across clients. Luan and Duy still need a stable logical call identity before voice Help can switch transports without consuming a second hint. Help uses one text relay socket. Debrief remains gated on a confirmed deployed fix, with the gate exercised against simulated state. The real GitHub diff and live Deepgram paths need provider configuration and separate verification.
+The panel bridge checks membership and unlocks for its own demo reads. Direct API reads and the relay still need authenticated member scope for production. Help uses the scripted relay in the local test. The browser verified the Debrief gate with a simulated fixed incident.
 
-## Checks
+**Explain it back.** Why can the browser warn about an edit that arrived on the last poll while only the API can safely reject two simultaneous saves?
 
-- Production build and typecheck passed.
-- Seventeen browser checks passed across fixtures, the legacy FastAPI demo and the latest local team FastAPI. The team walkthrough used two demo handles and the actual scripted Dana relay. It covered panel access checks, log filtering and clipboard, stale panel retry, scenario diff source, runbook steps, metric history, a lost finding acknowledgement, one Help increment, recovery in both browsers, and a shared handoff.
-- Eighty-one backend smoke checks and nine offline voice checks passed. The shared board passed Chromium layout checks at 320, 390, and 1440 px. The debrief gate was browser-tested with simulated state. Live Deepgram, physical device audio and a real GitHub release diff were not exercised.
-
-**Explain it back.** Why do the metrics shown during recovery still come from the incident poll while the historical timeline has its own fetch?
-
-**Quick verification.** Follow the [two-browser setup](../apps/web/README.md) and run [the Night board test](../apps/web/tests/night-board.spec.ts). Inspect the first denied log request, the successful open action, and the handoff that reaches the other browser.
+**Quick verification.** Run the [two-browser setup](../apps/web/README.md) and [Night board checks](../apps/web/tests/night-board.spec.ts). Compare the screen after a temporary outage with the screen after the former teammate receives an authoritative denial.

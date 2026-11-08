@@ -9,13 +9,19 @@ function panelUrl(incidentId: string, panel: string, filters?: Record<string, st
 
 function usePanel<T>(url: string, refreshKey?: string) {
   const [data, setData] = useState<T>();
-  const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "failed" | "unavailable">("loading");
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
     setState("loading");
     void fetch(url, { cache: "no-store", signal: controller.signal }).then(async response => {
+      if (controller.signal.aborted) return;
+      if ([401, 403, 404].includes(response.status)) {
+        setData(undefined);
+        setState("unavailable");
+        return;
+      }
       if (!response.ok) throw new Error("Panel unavailable");
       const result: T = await response.json();
       if (!controller.signal.aborted) {
@@ -38,7 +44,8 @@ function PanelStatus({ state, hasData, retry }: {
   if (state === "loading") return <p className="muted" role="status">{hasData ? "Refreshing this panel…" : "Loading this panel…"}</p>;
   return (
     <div className="entry-section">
-      <p className="notice" role="alert">{hasData ? "Refresh failed. Showing the last loaded data." : "This panel is unavailable."}</p>
+      <p className="notice" role="alert">{state === "unavailable" ? "This panel is unavailable for the current incident."
+        : hasData ? "Refresh failed. Showing the last loaded data." : "This panel is unavailable."}</p>
       <button onClick={retry}>Retry panel</button>
     </div>
   );
@@ -72,7 +79,7 @@ export function TeamLogs({ incidentId }: { incidentId: string }) {
       </form>
       <PanelStatus state={state} hasData={Boolean(data)} retry={reload} />
       <p className="muted" role="status">{copyNotice}</p>
-      {data && !data.lines.length ? <p>No logs match these filters.</p> : null}
+      {state === "ready" && data && !data.lines.length ? <p>No logs match these filters.</p> : null}
       <div className="log-list team-log-list" tabIndex={data?.lines.length ? 0 : undefined} role="region" aria-label="Log results">
         {data?.lines.map((line, index) => (
           <details key={JSON.stringify([line.time, line.service, line.message, index])}>

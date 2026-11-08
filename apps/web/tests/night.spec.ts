@@ -110,8 +110,21 @@ test("answers by text in one click, follows captions and reports engine changes"
     relay.send(JSON.stringify({ type: "caption", role: "dana", text: `Caption ${number}` }));
   }
   await expect(page.getByRole("status")).toContainText("text · Scripted (no AI)");
-  await expect(page.getByRole("log").getByText("Caption 20")).toBeInViewport();
-  await expect(page.getByRole("log")).toContainText("Test relay briefing");
+  const log = page.getByRole("log");
+  await expect(log.getByText("Caption 20")).toBeInViewport();
+  await log.evaluate(element => {
+    element.scrollTop = 0;
+    element.dispatchEvent(new Event("scroll"));
+  });
+  relay.send(JSON.stringify({ type: "caption", role: "dana", text: "Caption while reviewing" }));
+  await expect(log).toContainText("Caption while reviewing");
+  await expect(log.getByText("Test relay briefing")).toBeInViewport();
+  await log.evaluate(element => {
+    element.scrollTop = element.scrollHeight;
+    element.dispatchEvent(new Event("scroll"));
+  });
+  relay.send(JSON.stringify({ type: "caption", role: "dana", text: "Caption after returning to latest" }));
+  await expect(log.getByText("Caption after returning to latest")).toBeInViewport();
   expect(requests).toHaveLength(1);
   relay.send(JSON.stringify({ type: "caption", role: "dana", text: "Dana’s final text" }));
   relay.send(JSON.stringify({ type: "call_ended", reason: "done" }));

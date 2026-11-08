@@ -10,22 +10,41 @@ const fields = [
   ["risks", "Remaining risks"],
 ] as const;
 
+function payloadKey(note: HandoffRequest) {
+  return JSON.stringify([...fields.map(([key]) => note[key]), note.morning_pair ?? []]);
+}
+
 export function NightHandoff({ incident, user, unavailable, onSave }: {
   incident: Pick<IncidentState, "phase" | "handoff">;
   user: string;
   unavailable: boolean;
   onSave: (draft: HandoffRequest) => Promise<number>;
 }) {
-  const [editing, setEditing] = useState(false);
+  const [editor, setEditor] = useState<{ version: string; initial: IncidentState["handoff"] }>();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [unconfirmedDraft, setUnconfirmedDraft] = useState<string>();
+  const [accepted, setAccepted] = useState<{ version: string; payload: string }>();
   const heading = useRef<HTMLHeadingElement>(null);
   const handoff = incident.handoff;
-  const phaseAllowsHandoff = incident.phase === "stabilized" || incident.phase === "handed_off";
+  const currentPayload = handoff ? payloadKey(handoff) : undefined;
+  const version = handoff ? JSON.stringify([handoff.by, handoff.sim_clock, currentPayload, handoff.rating]) : "";
+  const lateFirstHandoff = !handoff && (incident.phase === "fixed" || incident.phase === "debriefed");
+  const phaseAllowsHandoff = incident.phase === "stabilized" || incident.phase === "handed_off" || lateFirstHandoff;
   const editable = phaseAllowsHandoff && (!handoff || (!handoff.rating && handoff.night_pair.includes(user)));
+  const changedDuringEdit = editor !== undefined && editor.version !== version;
+  const draftAlreadyShared = unconfirmedDraft !== undefined && handoff?.by === user && currentPayload === unconfirmedDraft;
+  const awaitingSnapshot = accepted?.version === version && accepted.payload !== currentPayload;
 
-  if (!phaseAllowsHandoff && !handoff && !editing) return null;
+  function closeEditor() {
+    setEditor(undefined);
+    setUnconfirmedDraft(undefined);
+    setError("");
+    heading.current?.focus();
+  }
+
+  if (!phaseAllowsHandoff && !handoff && !editor) return null;
 
   return (
     <section className="panel evidence-panel" aria-labelledby="handoff-title">
@@ -40,15 +59,18 @@ export function NightHandoff({ incident, user, unavailable, onSave }: {
         </>
       ) : <p>Write a short note for the next shift about the incident and what still needs work.</p>}
       {notice ? <p role="status">{notice}</p> : null}
-      {editable && !editing ? (
-        <button disabled={unavailable} onClick={() => { setNotice(""); setEditing(true); }}>
+      {editable && !editor ? (
+        <button disabled={unavailable || awaitingSnapshot} onClick={() => {
+          setNotice("");
+          setEditor({ version, initial: handoff });
+        }}>
           {handoff ? "Edit shift handoff" : "Write shift handoff"}
         </button>
       ) : null}
-      {editing ? (
-        <form className="entry-section" onSubmit={async event => {
+      {editor ? (
+        <form className="entry-section" onChange={() => setUnconfirmedDraft(undefined)} onSubmit={async event => {
           event.preventDefault();
-          if (saving || unavailable || !editable) return;
+          if (saving || unavailable || !editable || changedDuringEdit || draftAlreadyShared) return;
           const form = new FormData(event.currentTarget);
           const part = (key: string) => String(form.get(key) ?? "").trim();
           const handles = part("morning_pair").split(",").map(value => value.trim().toLowerCase()).filter(Boolean);
@@ -66,37 +88,51 @@ export function NightHandoff({ incident, user, unavailable, onSave }: {
           }
           setSaving(true);
           setError("");
+          setUnconfirmedDraft(undefined);
+          const payload = payloadKey(body);
           const status = await onSave(body);
           if (!status) return;
           setSaving(false);
           if (status === 204) {
-            setEditing(false);
+            setAccepted({ version, payload });
             setNotice("Shift handoff saved.");
-            heading.current?.focus();
-          } else if (status === 403) {
+            closeEditor();
+          } else if (status === 401 || status === 403 || status === 404) {
             setError("The API did not authorize this member to write the handoff.");
           } else if (status === 409) {
             setError("The incident changed. Check its recovery or handoff status, then try again.");
           } else if (status === 422) {
             setError("Check that each part has text and any morning handles exist.");
           } else {
+            setUnconfirmedDraft(payload);
             setError("The API did not confirm the handoff. Check the shared note before retrying.");
           }
         }}>
           {fields.map(([key, label]) => (
             <label key={key}>{label}
-              <textarea autoFocus={key === "what_happened"} name={key} rows={2} required maxLength={1000} readOnly={saving} defaultValue={handoff?.[key]} />
+              <textarea autoFocus={key === "what_happened"} name={key} rows={2} required maxLength={1000} readOnly={saving} defaultValue={editor.initial?.[key]} />
             </label>
           ))}
           <label>Morning teammate handles (optional)
             <input name="morning_pair" maxLength={140} autoComplete="off" readOnly={saving}
-              defaultValue={handoff?.morning_pair.join(", ")} />
+              defaultValue={editor.initial?.morning_pair.join(", ")} />
           </label>
           {!editable ? <p className="notice">The current incident state prevents edits.</p> : null}
-          {error ? <p className="notice" role="alert">{error}</p> : null}
+          {draftAlreadyShared ? <p className="notice" role="status">Your draft is already in the shared handoff.</p>
+            : changedDuringEdit ? <p className="notice" role="status">The shared handoff changed. Review the latest note above before saving.</p>
+            : error ? <p className="notice" role="alert">{error}</p> : null}
           <div className="actions">
-            <button className="primary" disabled={saving || unavailable || !editable}>{saving ? "Saving handoff…" : "Save shift handoff"}</button>
-            <button type="button" disabled={saving} onClick={() => { setError(""); setEditing(false); heading.current?.focus(); }}>Cancel handoff edit</button>
+            {draftAlreadyShared ? <button type="button" onClick={closeEditor}>Close saved draft</button> : null}
+            {changedDuringEdit && !draftAlreadyShared && editable ? (
+              <button type="button" disabled={saving || unavailable} onClick={() => {
+                setEditor({ ...editor, version });
+                setError("");
+              }}>Keep my draft and allow save</button>
+            ) : null}
+            <button className="primary" disabled={saving || unavailable || !editable || changedDuringEdit || draftAlreadyShared}>
+              {saving ? "Saving handoff…" : "Save shift handoff"}
+            </button>
+            <button type="button" disabled={saving} onClick={closeEditor}>Cancel handoff edit</button>
           </div>
         </form>
       ) : null}

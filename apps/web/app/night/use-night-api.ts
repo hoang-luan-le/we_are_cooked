@@ -20,7 +20,7 @@ export type NightSnapshot = {
 export function useNightApi(enabled: boolean, incidentId?: string) {
   const path = incidentId ? `/api/night?incident=${encodeURIComponent(incidentId)}` : "/api/night";
   const [snapshot, setSnapshot] = useState<NightSnapshot>();
-  const [readError, setReadError] = useState(false);
+  const [readFailure, setReadFailure] = useState<"access" | "unavailable">();
   const [actionError, setActionError] = useState("");
   const [pending, setPending] = useState(false);
   const [retryAction, setRetryAction] = useState<NightAction>();
@@ -45,7 +45,7 @@ export function useNightApi(enabled: boolean, incidentId?: string) {
         : incident.findings.length > oldCount ? oldCount : previous?.newFindingFrom;
       return { incident, samples, receivedAt, newFindingFrom };
     });
-    setReadError(false);
+    setReadFailure(undefined);
   }, []);
 
   const read = useCallback(async () => {
@@ -54,15 +54,24 @@ export function useNightApi(enabled: boolean, incidentId?: string) {
     active.current = { controller, write: false };
     try {
       const response = await fetch(path, { cache: "no-store", signal: controller.signal });
+      if (controller.signal.aborted) return;
+      if (incidentId && [401, 403, 404].includes(response.status)) {
+        keys.current.clear();
+        setSnapshot(undefined);
+        setActionError("");
+        setRetryAction(undefined);
+        setReadFailure("access");
+        return;
+      }
       if (!response.ok) throw new Error("Incident unavailable");
       const incident: NightIncident = await response.json();
       if (!controller.signal.aborted) show(incident);
     } catch {
-      if (!controller.signal.aborted) setReadError(true);
+      if (!controller.signal.aborted) setReadFailure(current => current === "access" ? current : "unavailable");
     } finally {
       if (active.current?.controller === controller) active.current = null;
     }
-  }, [path, show]);
+  }, [incidentId, path, show]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -74,6 +83,13 @@ export function useNightApi(enabled: boolean, incidentId?: string) {
       active.current = null;
     };
   }, [enabled, read]);
+
+  function refresh() {
+    if (active.current?.write) return;
+    active.current?.controller.abort();
+    active.current = null;
+    void read();
+  }
 
   async function act(intent: NightAction) {
     if (active.current?.write) return false;
@@ -157,5 +173,8 @@ export function useNightApi(enabled: boolean, incidentId?: string) {
     }
   }
 
-  return { snapshot, read, readError, pending, actionError, retryAction, act, saveHandoff };
+  return {
+    snapshot, refresh, readError: Boolean(readFailure), accessLost: readFailure === "access",
+    pending, actionError, retryAction, act, saveHandoff,
+  };
 }

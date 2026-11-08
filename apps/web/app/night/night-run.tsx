@@ -18,6 +18,7 @@ export function NightRun({ apiUser, relayBase, entry, incidentId }: { apiUser?: 
   const [answerPending, setAnswerPending] = useState(false);
   const [snoozed, setSnoozed] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
+  const [helpSnapshotTime, setHelpSnapshotTime] = useState<number>();
   const [supportCall, setSupportCall] = useState<SupportCall>();
   const [completedSupport, setCompletedSupport] = useState<{
     call: SupportCall;
@@ -33,7 +34,7 @@ export function NightRun({ apiUser, relayBase, entry, incidentId }: { apiUser?: 
   const api = useNightApi(Boolean(apiUser), incidentId);
   const incident = api.snapshot?.incident;
   const recoveringAnswer = stage === "page" && (answerPending || api.retryAction?.action === "answer");
-  const visibleStage = incident
+  const visibleStage = api.accessLost ? "page" : incident
     ? incident.phase === "paged" || recoveringAnswer ? "page" : stage === "briefing" ? "briefing" : "board"
     : stage;
 
@@ -106,7 +107,8 @@ export function NightRun({ apiUser, relayBase, entry, incidentId }: { apiUser?: 
     if (visibleStage === "briefing") return closeBriefing;
   }, [visibleStage, closeBriefing]);
 
-  const canUseRelay = Boolean(apiUser && relayBase && incident && !api.readError && visibleStage === "board");
+  const checkingAfterHelp = helpSnapshotTime !== undefined && api.snapshot?.receivedAt === helpSnapshotTime;
+  const canUseRelay = !checkingAfterHelp && Boolean(apiUser && relayBase && incident && !api.readError && visibleStage === "board");
   const helpAvailable = canUseRelay && incident?.status !== "fixed";
   const debriefAvailable = canUseRelay && incident?.status === "fixed" &&
     (incident.phase === "fixed" || incident.phase === "debriefed");
@@ -131,8 +133,9 @@ export function NightRun({ apiUser, relayBase, entry, incidentId }: { apiUser?: 
     setSupportCall(undefined);
     if (!reset) {
       if (supportCall && briefing.captions.length) setCompletedSupport({ call: supportCall, captions: briefing.captions });
+      if (supportCall === "help") setHelpSnapshotTime(api.snapshot?.receivedAt);
       heading.current?.focus();
-      void api.read();
+      api.refresh();
     }
   }
 
@@ -169,13 +172,22 @@ export function NightRun({ apiUser, relayBase, entry, incidentId }: { apiUser?: 
             {saveFailed ? <p className="notice" role="alert">Progress could not be saved. You can continue in this tab.</p> : null}
           </section>
         ) : null}
+        {incidentId && incident ? (
+          <section className="panel entry-section entry-context" aria-label="Shared incident team">
+            <p><strong>{apiUser}</strong> · {levels[incident.level].title} · Shared Night incident</p>
+            <details>
+              <summary>Incident teammates</summary>
+              <ul className="entry-list">{incident.teammates.map(handle => <li key={handle}>{handle}</li>)}</ul>
+            </details>
+          </section>
+        ) : null}
         {api.readError || api.actionError ? (
           <div className="notice action-notice">
-            <p role="alert">{api.actionError || (incident
+            <p role="alert">{api.accessLost ? "This incident is no longer available to this demo member." : api.actionError || (incident
               ? "The API is unavailable. Showing the last incident update."
               : "The demo incident is unavailable.")}</p>
             <div className="actions">
-              <button onClick={api.read}>Refresh incident</button>
+              <button onClick={api.refresh}>Refresh incident</button>
               {api.retryAction ? <button disabled={api.pending} onClick={() => api.retryAction && void perform(api.retryAction)}>Retry last action</button> : null}
               {api.readError && incidentId ? <Link className="button" href="/start">Back to simulation entry</Link> : null}
               {api.readError ? <Link className="button" href="/night?fixture=1">Use development fixture</Link> : null}
@@ -214,6 +226,8 @@ export function NightRun({ apiUser, relayBase, entry, incidentId }: { apiUser?: 
             {supportCall ? (
               <DanaBriefing key={supportCall} heading={supportHeading} call={supportCall} briefing={briefing}
                 onContinue={() => closeSupport()} />
+            ) : checkingAfterHelp && !api.readError ? (
+              <p className="muted" role="status">Checking the incident after Help…</p>
             ) : helpAvailable || debriefAvailable ? (
               <section className="panel entry-section dana-tools" aria-label="Dana calls">
                 {helpAvailable && incident?.nudge ? (

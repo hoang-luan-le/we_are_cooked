@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { type FormEvent, type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { DanaCall, DanaMode, DanaServerMsg } from "../../../../packages/contracts/dana";
 import { connectDana, type DanaConnection, type DanaTarget } from "./dana-connection";
 import { BRIEFING, scriptedReply } from "./fixture";
@@ -111,13 +111,16 @@ export function DanaBriefing({ heading, briefing, onContinue, call = "briefing" 
   const [draft, setDraft] = useState("");
   const log = useRef<HTMLDivElement>(null);
   const following = useRef(true);
+  const lastAutoScroll = useRef(0);
   const engineLabel = engine === "deepgram" ? "Deepgram" : engine === "scripted" ? "Scripted (no AI)" : undefined;
   const status = mode === "fixture"
     ? "Offline briefing · Development fixture"
     : ["Dana relay", mode, engineLabel, state].filter(Boolean).join(" · ");
 
-  useEffect(() => {
-    if (following.current && log.current) log.current.scrollTop = log.current.scrollHeight;
+  useLayoutEffect(() => {
+    if (!following.current || !log.current) return;
+    log.current.scrollTop = log.current.scrollHeight;
+    lastAutoScroll.current = log.current.scrollTop;
   }, [captions]);
 
   function sendText(event: FormEvent<HTMLFormElement>) {
@@ -133,7 +136,10 @@ export function DanaBriefing({ heading, briefing, onContinue, call = "briefing" 
       <p role="status" className="muted">{status}</p>
       {notice ? <p className="notice" role="alert">{notice}</p> : null}
       <div className="captions" ref={log} role="log" aria-label="Dana captions" tabIndex={0} onScroll={({ currentTarget }) => {
-        following.current = currentTarget.scrollHeight - currentTarget.clientHeight - currentTarget.scrollTop <= 8;
+        const { scrollHeight, clientHeight, scrollTop } = currentTarget;
+        const atBottom = scrollHeight - clientHeight - scrollTop <= 8;
+        // A queued scroll event can arrive after more captions have increased the height.
+        if (atBottom || scrollTop !== lastAutoScroll.current) following.current = atBottom;
       }}>
         {captions.length ? captions.map((caption, index) => (
           <p key={index}><strong>{caption.role === "dana" ? "Dana" : "You"}</strong> {caption.text}</p>
