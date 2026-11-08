@@ -19,7 +19,11 @@ from cohorts import CohortStore
 from config import Settings
 from db import MEMORY, Database, open_database
 from engine.errors import ActionRejected
-from routes import cohorts, debrief, demo, handoff, incidents
+from github_client import GitHubClient
+from accounts import AccountStore, Auth0Verifier
+from checks import CheckStore
+from network import NetworkStore
+from routes import after, cohorts, debrief, demo, handoff, incidents, network, panels, pr
 from routes.deps import Runtime
 from scenario_loader import ScenarioError, load_scenario
 from store import IncidentStore
@@ -75,7 +79,18 @@ async def _rejected(request: Request, exc: ActionRejected) -> JSONResponse:
     return JSONResponse(status_code=exc.status_code, content={"code": exc.code, "detail": exc.message})
 
 
-def create_app(settings: Settings | None = None, clock: Callable[[], float] = time.time) -> FastAPI:
+def _github(settings: Settings, transport) -> GitHubClient | None:
+    if not settings.pilot_repos:
+        logger.info("PILOT_REPOS is empty: GitHub features off (deploy diffs come from scenario.json)")
+        return None
+    return GitHubClient(token=settings.github_token, allowlist=settings.pilot_repos,
+                        mentors=settings.mentor_github, transport=transport)
+
+
+def create_app(
+    settings: Settings | None = None, clock: Callable[[], float] = time.time, github_transport=None,
+    auth0_transport=None,
+) -> FastAPI:
     """`clock` is wall-clock seconds: saved snapshots must still mean something after a restart."""
     resolved = settings or Settings.from_env()
 
@@ -85,19 +100,33 @@ def create_app(settings: Settings | None = None, clock: Callable[[], float] = ti
         app.state.settings = resolved
         app.state.db = db
         app.state.cohorts = CohortStore(db, clock)  # independent of the scenario
+        app.state.network = NetworkStore(db, clock)
+        app.state.checks = CheckStore(db, clock)
+        app.state.accounts = AccountStore(db, clock)
+        app.state.auth0 = (Auth0Verifier(resolved.auth0_domain, resolved.auth0_audience, auth0_transport)
+                           if resolved.auth0_domain else None)
         app.state.runtime, app.state.scenario_error = _start_runtime(resolved, clock, db)
+        app.state.github = _github(resolved, github_transport)
         try:
             yield
         finally:
             db.close()
+            if app.state.github is not None:
+                app.state.github.close()
+            if app.state.auth0 is not None:
+                app.state.auth0.close()
 
     app = FastAPI(title="Incident Lab API", version="0.3.0", lifespan=lifespan)
     _add_cors(app, resolved)
     app.add_exception_handler(ActionRejected, _rejected)
     app.include_router(incidents.router)
     app.include_router(handoff.router)
+    app.include_router(panels.router)
+    app.include_router(pr.router)
     app.include_router(debrief.router)
     app.include_router(cohorts.router)
+    app.include_router(network.router)
+    app.include_router(after.router)
     app.include_router(demo.router)
     app.include_router(dana_router)  # WS /ws/voice (owned by AI)
 
@@ -117,6 +146,7 @@ def create_app(settings: Settings | None = None, clock: Callable[[], float] = ti
             status_code=200,
             content={"status": "ok", "scenario": {"loaded": True, "id": runtime.scenario.id},
                      "database": database,
+                     "pilot_repo": request.app.state.github.pilot_repo if request.app.state.github else None,
                      "demo_incident": runtime.scenario.spec.incident_id,
                      "demo_mode": request.app.state.settings.demo_mode},
         )

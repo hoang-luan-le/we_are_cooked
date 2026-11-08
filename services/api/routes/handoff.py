@@ -59,11 +59,9 @@ def post_handoff(
     actor: Actor = Depends(require_member),
     rt: Runtime = Depends(get_runtime),
 ) -> dict:
-    settings = request.app.state.settings
-
     def change(state, now):
         require_teammate(state, actor)  # before known_handles, so outsiders learn nothing about handles
-        morning_pair = known_handles(settings, body.morning_pair)
+        morning_pair = known_handles(request, body.morning_pair)
         new_state = write_handoff(state, actor=actor.handle, parts=body.parts(), morning_pair=morning_pair, now=now)
         return new_state, state_view(new_state, rt.scenario, now)
 

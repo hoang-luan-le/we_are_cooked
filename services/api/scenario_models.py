@@ -76,6 +76,51 @@ class Releases(_Frozen):
     good: str
 
 
+class LogsSpec(_Frozen):
+    requests_per_second: int = Field(ge=1, le=20)
+    guest_share: float = Field(gt=0, lt=1)
+    member_line: str
+    error_line: str
+    guest_ok_line: str
+    noise_line: str
+    noise_every_s: int = Field(ge=1)
+    tiers: tuple[str, ...] = Field(min_length=1)
+
+
+class DeployFile(_Frozen):
+    filename: str
+    patch: str
+
+
+class Deploy(_Frozen):
+    version: str
+    at: str = Field(pattern=CLOCK_PATTERN)
+    day: str
+    author: str
+    title: str
+    files: tuple[DeployFile, ...] = ()
+
+
+class Runbook(_Frozen):
+    title: str
+    steps: tuple[str, ...] = Field(min_length=1)
+
+
+class CheckChoice(_Frozen):
+    id: str = Field(min_length=1, max_length=8)
+    text: str = Field(min_length=1)
+
+
+class CheckSpec(_Frozen):
+    question: str = Field(min_length=1)
+    choices: tuple[CheckChoice, ...] = Field(min_length=2)
+
+
+class PilotSpec(_Frozen):
+    base_branch: str = Field(min_length=1)          # a fix PR must target this branch
+    fix_paths: tuple[str, ...] = Field(min_length=1)  # ...and change at least one file under these
+
+
 class ScenarioSpec(_Frozen):
     """Everything except the answer key. Safe to read from any route; still sent field by field."""
 
@@ -90,6 +135,13 @@ class ScenarioSpec(_Frozen):
     action_results: dict[str, str]
     help_ladder: tuple[LadderStep, ...] = Field(min_length=1)
     all_found_hint: str = Field(min_length=1)
+    logs: LogsSpec
+    deploys: tuple[Deploy, ...] = Field(min_length=1)
+    fix_version: str
+    runbooks: dict[str, Runbook] = Field(min_length=1)
+    job_searches: tuple[str, ...] = Field(min_length=1)
+    check: CheckSpec
+    pilot: PilotSpec
 
     @model_validator(mode="after")
     def _ladder_uses_known_panels(self) -> "ScenarioSpec":
@@ -113,3 +165,4 @@ class AnswerKey(_Frozen):
     fix: str
     cause_keywords: tuple[str, ...] = Field(min_length=1)
     communication_keywords: CommunicationKeywords
+    check_scores: dict[str, int]          # before/after check: choice id -> 0, 2 or 4

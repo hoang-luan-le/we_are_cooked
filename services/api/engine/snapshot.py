@@ -33,12 +33,18 @@ def from_snapshot(data: dict[str, Any]) -> IncidentState:
             "actions_taken": tuple(fields.get("actions_taken", ())),
             "actors": tuple(fields.get("actors", ())),
             "teammates": tuple(fields.get("teammates", ())),
-            "pr": PullRequest(**fields["pr"]) if fields.get("pr") else None,
+            "pr": _pr(fields.get("pr")),
             "debrief": Debrief(**fields["debrief"]) if fields.get("debrief") else None,
             "handoff": _handoff(fields.get("handoff")),
         })
     except (TypeError, KeyError) as exc:
         raise SnapshotError(f"snapshot does not match IncidentState: {exc}") from exc
+
+
+def _pr(data: dict[str, Any] | None) -> PullRequest | None:
+    if not data:
+        return None
+    return PullRequest(**{**data, "reviewers": tuple(data.get("reviewers", ()))})
 
 
 def _handoff(data: dict[str, Any] | None) -> Handoff | None:
