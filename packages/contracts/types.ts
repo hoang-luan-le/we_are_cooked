@@ -262,3 +262,16 @@ export interface CheckView {
 // First sign-in: every route answers 403 handle_required until POST /api/me/handle -> Me.
 // Handles are pseudonymous: 1-32 of [a-z0-9_-]. The Auth0 account id is never shown to anyone.
 export interface ClaimHandleRequest { handle: string }  // 409 handle_taken | handle_already_set, 422 bad_handle
+
+// ---- GET /api/next-fixes (no auth) -> NextFixes  (P1: "next real fix in an open-source project") ----
+// Real open, unassigned GitHub "good first issue" issues saved by `python oss.py`, grouped by the skill
+// this incident practised. No snapshot yet -> fetched_at null, searches [], plus `message`. Never invented.
+export interface NextFixIssue {
+  title: string; repo: string; url: string; labels: string[]; comments: number;
+  created_at: string; updated_at: string;    // no usernames are kept
+}
+export interface NextFixes {
+  source: "GitHub"; fetched_at: string | null;   // show it: "Open issues as of ..."
+  searches: { skill: string; issues: NextFixIssue[] }[];
+  message?: string;
+}

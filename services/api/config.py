@@ -38,6 +38,7 @@ class Settings:
     pilot_repos: tuple[str, ...] = ()    # "owner/repo" allowlist; empty = GitHub features off
     mentor_github: tuple[str, ...] = ()  # GitHub logins of mentors who agreed to review
     jobs_snapshot_path: Path = API_DIR / "data" / "jobs_snapshot.json"   # written by adzuna.py
+    next_fixes_snapshot_path: Path = API_DIR / "data" / "next_fixes.json"  # written by oss.py
 
     @property
     def demo_mode(self) -> bool:
@@ -63,6 +64,8 @@ class Settings:
             mentor_github=_handles(env("MENTOR_GITHUB")),
             jobs_snapshot_path=Path(env("JOBS_SNAPSHOT_PATH")
                                     or API_DIR / "data" / "jobs_snapshot.json"),
+            next_fixes_snapshot_path=Path(env("NEXT_FIXES_SNAPSHOT_PATH")
+                                          or API_DIR / "data" / "next_fixes.json"),
         )
 
 

@@ -25,6 +25,9 @@ class MetricsRecorder:
         self._lock = threading.Lock()
         self.written = 0
         self.failures = 0
+        self.dropped = 0
+        self._accepted = 0           # rows put on the queue; flush waits until each is written or failed
+        self._done = threading.Condition()
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, name="metrics-recorder", daemon=True)
         self._thread.start()
@@ -39,7 +42,10 @@ class MetricsRecorder:
         try:
             self._queue.put_nowait(row)
         except queue.Full:
-            self.failures += 1
+            self.dropped += 1  # never accepted, so flush doesn't wait for it
+            return
+        with self._done:
+            self._accepted += 1
 
     def _run(self) -> None:
         while not self._stop.is_set():
@@ -54,19 +60,19 @@ class MetricsRecorder:
                     break
             try:
                 self._db.record_metrics(rows)
-                self.written += len(rows)
+                written, failed = len(rows), 0
             except DB_ERRORS:
-                self.failures += len(rows)
+                written, failed = 0, len(rows)
                 logger.exception("Could not write %d metrics sample(s) to Tiger Data", len(rows))
+            with self._done:
+                self.written += written
+                self.failures += failed
+                self._done.notify_all()
 
-    def flush(self, timeout_s: float = 5.0) -> None:
-        """Wait until queued samples are written (used on shutdown and in checks)."""
-        deadline = threading.Event()
-        for _ in range(int(timeout_s * 20)):
-            if self._queue.empty():
-                break
-            deadline.wait(0.05)
-        deadline.wait(0.2)  # let the in-flight batch finish
+    def flush(self, timeout_s: float = 5.0) -> bool:
+        """Wait until every accepted sample is written (or failed). True if it finished in time."""
+        with self._done:
+            return self._done.wait_for(lambda: self.written + self.failures >= self._accepted, timeout=timeout_s)
 
     def close(self) -> None:
         self.flush()

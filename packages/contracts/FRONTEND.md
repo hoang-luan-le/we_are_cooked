@@ -141,6 +141,9 @@ exists; whole demo team are teammates), or create one with
   once stable. Scores appear only when both are in (`improved` = after − before).
 - Jobs: `GET /api/jobs` → `JobsSnapshot`. Always show **"Listings from Adzuna as of
   {fetched_at}"**. If `searches` is empty, show `message`; never fake listings.
+- Next real fix (P1): `GET /api/next-fixes` → `NextFixes`: real open-source "good first issue" issues
+  grouped by the skill just practised. Show **"Open issues on GitHub as of {fetched_at}"**; link each
+  title to its `url` (opens on GitHub). Empty → show `message`.
 - Connections: `GET /api/connections/pending` → who to answer about; `POST /api/connections
   { incident_id, to_user, work_again, note }`. Private: the reply never says what the other person
   answered.
