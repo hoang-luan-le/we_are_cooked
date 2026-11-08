@@ -4,5 +4,6 @@ pydantic>=2.7,<3.0
 python-dotenv>=1.0
 httpx>=0.27,<1.0   # FastAPI TestClient, GitHub, Adzuna, Auth0 keys
 PyJWT[crypto]>=2.9,<3.0   # Auth0 access tokens (RS256)
+truststore>=0.10,<1.0   # outgoing HTTPS trusts the OS certificate store (antivirus/proxy roots)
 # Dana's voice router is mounted in main.py, so its dependencies are ours too.
 -r voice/requirements.txt

@@ -10,14 +10,15 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
 
-from config import API_DIR, REPO_ROOT
+import tls
+
+from config import API_DIR, REPO_ROOT, env
 from scenario_loader import load_scenario
 
 logger = logging.getLogger("incident_lab.adzuna")
@@ -49,7 +50,7 @@ def fetch_snapshot(app_id: str, app_key: str, searches: tuple[str, ...],
     if not app_id or not app_key:
         raise AdzunaError("ADZUNA_APP_ID and ADZUNA_APP_KEY are required")
     results = []
-    with httpx.Client(timeout=TIMEOUT_S, transport=transport) as client:
+    with httpx.Client(timeout=TIMEOUT_S, transport=transport, verify=tls.verify()) as client:
         for what in searches:
             try:
                 response = client.get(ADZUNA_URL.format(country=COUNTRY), params={
@@ -88,10 +89,10 @@ def main() -> int:
 
     load_dotenv(REPO_ROOT / ".env")
     scenario = load_scenario(REPO_ROOT / "scenario" / "scenario.json")
-    path = Path(os.environ.get("JOBS_SNAPSHOT_PATH", "").strip() or DEFAULT_SNAPSHOT_PATH)
+    path = Path(env("JOBS_SNAPSHOT_PATH") or DEFAULT_SNAPSHOT_PATH)
     try:
-        snapshot = fetch_snapshot(os.environ.get("ADZUNA_APP_ID", "").strip(),
-                                  os.environ.get("ADZUNA_APP_KEY", "").strip(), scenario.spec.job_searches)
+        snapshot = fetch_snapshot(env("ADZUNA_APP_ID"),
+                                  env("ADZUNA_APP_KEY"), scenario.spec.job_searches)
     except AdzunaError as exc:
         print(f"Not saved: {exc}. The previous snapshot (if any) is unchanged.", file=sys.stderr)
         return 1
