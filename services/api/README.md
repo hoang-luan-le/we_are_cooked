@@ -39,5 +39,6 @@ python tests/test_smoke.py                 # must print ALL GOOD before you push
 Contract: `packages/contracts/types.ts` and `dana-voice.md` §5.
 
 ## Before the demo
+`python test_all.py` tests everything (backend, web, all browser suites; ~7 min; `--quick` = 2 min).
 `python demo.py check` (is everything ready?), `python demo.py reset-pilot` (bug back + fresh fix branch), `python demo.py start` (backend + Night/Morning windows), `python demo.py reset` (2:04 page).
 `python tests/test_smoke.py` (ALL GOOD), `python tests/check_tigerdata.py` (TIGER DATA OK), `python adzuna.py` and `python oss.py` (fresh snapshots).
