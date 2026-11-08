@@ -160,7 +160,9 @@ def metrics_history(state: IncidentState, scenario: Scenario, now: float, *, win
     samples = []
     t = start
     while t <= now:
-        bucket = stored.get(int(t // step_s) * step_s) if t >= state.paged_at else None
+        # `stored` already holds only this run's samples (the query starts at the page), so any bucket counts,
+        # including one that straddles the page.
+        bucket = stored.get(int(t // step_s) * step_s)
         if bucket is not None:
             values, source = _rounded(bucket), "tigerdata"
         else:
