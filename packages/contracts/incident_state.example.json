@@ -1,0 +1,32 @@
+{
+  "incident_id": "inc_demo",
+  "level": "explore",
+  "phase": "paged",
+  "status": "broken",
+  "sim_clock": "02:04",
+  "metrics": {
+    "error_rate": 27.1,
+    "orders_per_min": 307,
+    "p95_ms": 1291,
+    "baseline": {
+      "error_rate": 0.4,
+      "orders_per_min": 420,
+      "p95_ms": 380
+    }
+  },
+  "loyalty_discounts": "on",
+  "unlocked": [],
+  "findings": [],
+  "status_updates": [],
+  "actions_taken": [],
+  "allowed_actions": [
+    "answer",
+    "snooze"
+  ],
+  "hint_calls": 0,
+  "nudge": false,
+  "stakeholder_message": null,
+  "pr": null,
+  "handoff": null,
+  "rubric": null
+}
