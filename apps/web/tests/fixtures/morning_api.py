@@ -1,5 +1,4 @@
 """Local Phase 04 browser fixture. FastAPI and Dana are real, GitHub is deterministic."""
-from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import re
@@ -13,6 +12,7 @@ sys.path[:0] = [str(api), str(api / "tests")]
 from config import Settings  # noqa: E402
 from main import create_app  # noqa: E402
 from test_smoke import FakeGitHub, PILOT  # noqa: E402
+from voice.config import INTERNAL_KEY  # noqa: E402
 
 created = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
 pulls = {
@@ -50,5 +50,6 @@ def transport(request):
     return response
 
 
-settings = replace(Settings(), pilot_repos=(PILOT,), sqlite_path=":memory:")
+# Share the relay key while keeping the fixture in demo mode with in-memory SQLite.
+settings = Settings(internal_key=INTERNAL_KEY, pilot_repos=(PILOT,), sqlite_path=":memory:")
 app = create_app(settings, github_transport=httpx.MockTransport(transport))

@@ -15,6 +15,10 @@ COMMAND_ID: 05-QA-QUALITY-01
 
 All four new test cases failed against their pre-fix build and passed with the fixes. The follow-up reuses existing routes, browser fixtures, and UI components.
 
+## Morning fixture relay authentication
+
+The [Morning API fixture](../apps/web/tests/fixtures/morning_api.py) now gives FastAPI the same resolved `INTERNAL_KEY` used by Dana. Importing all environment settings would also pick up authentication and persistence settings. The fixture uses demo identities, in-memory SQLite, and deterministic GitHub responses. A synthetic key reproduced the original 403. The Morning suite passed with that key, the debrief walkthrough also passed with a blank key, and a wrong key still returned 403.
+
 ## React and request order
 
 The TeamEntry effect subscribes to storage changes for the configured member and revalidates on restoration from the browser back-forward cache. Its cleanup removes both listeners and aborts the pending request. The controller ref lets a successful Start or a later storage change cancel an older lookup immediately. The old lookup checks its signal before updating state. Join can proceed concurrently because it writes a different storage key. Polling storage would add repeated reads and network checks while the saved ID is unchanged.
