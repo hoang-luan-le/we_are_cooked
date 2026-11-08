@@ -1,7 +1,7 @@
 # Bảng điều phối frontend · Incident Lab v6
 
 - **Phase hiện tại:** 01 · Nền và luồng Night 2D
-- **Trạng thái chung:** IN_PROGRESS
+- **Trạng thái chung:** PAUSED
 - **Người điều phối:** Tung
 - **Repo điều phối:** `thanhtungnguyen-dev/we_are_cooked`
 - **Agent chỉnh file:** RUNNER
