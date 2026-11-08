@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { demoApi, demoEnabled } from "./demo-config";
+import { FixtureNight } from "./fixture-night";
 import { NightRun } from "./night-run";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +17,7 @@ function devRelayBase() {
   }
 }
 
-export default async function NightPage({ searchParams }: { searchParams: Promise<{ fixture?: string }> }) {
+export default async function NightPage({ searchParams }: { searchParams: Promise<{ fixture?: string; entry?: string }> }) {
   if (!demoEnabled()) {
     return (
       <main className="landing">
@@ -28,7 +29,9 @@ export default async function NightPage({ searchParams }: { searchParams: Promis
     );
   }
 
-  const offline = (await searchParams).fixture === "1";
+  const params = await searchParams;
+  const offline = params.fixture === "1";
+  if (offline && typeof params.entry === "string") return <FixtureNight key={params.entry} entryId={params.entry} />;
   const config = offline ? undefined : demoApi();
   const relayBase = offline ? undefined : devRelayBase() ?? config?.origin.replace(/^http:/, "ws:");
   return <NightRun key={config ? "api" : "fixture"} apiUser={config?.user} relayBase={relayBase} />;

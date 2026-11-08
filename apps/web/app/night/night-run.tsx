@@ -5,12 +5,14 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import type { DanaMode } from "../../../../packages/contracts/dana";
 import { DanaBriefing, useDanaBriefing } from "./dana-briefing";
 import { prepareDanaAudio } from "./dana-connection";
+import { fixtureCohort, type FixtureEntry, levels, updateFixtureEntry } from "./fixture-entry";
 import { IncidentBoard } from "./incident-board";
 import { type NightAction, useNightApi } from "./use-night-api";
 
-export function NightRun({ apiUser, relayBase }: { apiUser?: string; relayBase?: string }) {
-  const [stage, setStage] = useState<"page" | "briefing" | "board">("page");
+export function NightRun({ apiUser, relayBase, entry }: { apiUser?: string; relayBase?: string; entry?: FixtureEntry }) {
+  const [stage, setStage] = useState<"page" | "briefing" | "board">(entry?.answered ? "board" : "page");
   const [snoozed, setSnoozed] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
   const answerMode = useRef<DanaMode | "fixture">(relayBase ? "text" : "fixture");
   const briefing = useDanaBriefing();
@@ -42,6 +44,7 @@ export function NightRun({ apiUser, relayBase }: { apiUser?: string; relayBase?:
       return false;
     }
     if (answering) {
+      if (entry) setSaveFailed(!updateFixtureEntry(entry.id, { answered: true }));
       setStage("briefing");
       if (mode === "fixture" || !relayBase) briefing.useFixture();
       else briefing.startRelay({
@@ -76,14 +79,29 @@ export function NightRun({ apiUser, relayBase }: { apiUser?: string; relayBase?:
 
   const answerDisabled = api.pending || api.readError || (incident && !incident.allowed_actions.includes("answer"));
   const finalCaption = briefing.state === "ended" ? briefing.captions.findLast(caption => caption.role === "dana")?.text : undefined;
+  const cohortRole = entry?.kind === "cohort" ? fixtureCohort.members.find(member => member.name === "You")?.role : undefined;
 
   return (
     <>
       <header className="app-header">
-        <Link href="/">Incident Lab</Link>
+        <Link href={entry ? "/start" : "/"}>Incident Lab</Link>
         <span className="badge fixture">{apiUser ? "Local demo API" : "Development fixture"}</span>
       </header>
       <main className={visibleStage === "board" ? "workspace" : "call-layout"}>
+        {entry ? (
+          <section className="panel entry-section entry-context" aria-label="Saved practice exercise">
+            <p><strong>{levels[entry.level].title}</strong> · {cohortRole ?? "Solo Night 2D"}</p>
+            {entry.kind === "cohort" ? (
+              <details>
+                <summary>Rehearsal cohort members</summary>
+                <ul className="entry-list">
+                  {fixtureCohort.members.map(member => <li key={member.name}>{member.name} · {member.role}</li>)}
+                </ul>
+              </details>
+            ) : null}
+            {saveFailed ? <p className="notice" role="alert">Progress could not be saved. You can continue in this tab.</p> : null}
+          </section>
+        ) : null}
         {api.readError || api.actionError ? (
           <div className="notice action-notice">
             <p role="alert">{api.actionError || (incident
@@ -119,7 +137,8 @@ export function NightRun({ apiUser, relayBase }: { apiUser?: string; relayBase?:
           <DanaBriefing heading={heading} briefing={briefing} onContinue={openDashboard} />
         ) : (
           <IncidentBoard heading={heading} snapshot={api.snapshot} pending={api.pending || api.readError}
-            finalCaption={finalCaption} onAction={perform} />
+            finalCaption={finalCaption} onAction={perform} initialRollbackAt={entry?.rollbackAt}
+            onFixtureRollback={entry ? rollbackAt => setSaveFailed(!updateFixtureEntry(entry.id, { rollbackAt })) : undefined} />
         )}
       </main>
     </>

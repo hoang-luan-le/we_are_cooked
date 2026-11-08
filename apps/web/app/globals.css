@@ -41,6 +41,19 @@ a { color: var(--accent); text-underline-offset: .22em; }
 .landing p:not(.eyebrow), .board-heading p:not(.eyebrow) { color: var(--muted); max-width: 59ch; }
 .landing .button { margin-top: 22px; }
 .call-layout { max-width: 720px; padding-block: clamp(24px, 8vh, 100px); }
+.entry-layout { max-width: 780px; padding: clamp(16px, 4vw, 32px); margin-inline: auto; }
+.entry-stack, .entry-section { display: grid; gap: 12px; justify-items: start; }
+.entry-stack > .panel { width: 100%; }
+.entry-levels { display: grid; width: 100%; gap: 8px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.entry-levels legend { margin-bottom: 6px; font-weight: 700; }
+.entry-option { grid-template-columns: auto 1fr; align-items: start; gap: 10px; border: 1px solid var(--line); border-radius: 9px; padding: 10px; }
+.entry-option input { width: 1rem; min-height: 0; margin: 4px 0 0; accent-color: var(--accent); }
+.entry-option span { display: block; }
+.entry-option .muted { font-weight: 400; }
+.entry-list { margin: 0; padding-left: 22px; }
+.entry-join { width: 100%; border-top: 1px solid var(--line); padding-top: 14px; }
+.entry-join .message-form { width: 100%; }
+.entry-context { margin-bottom: 16px; }
 .workspace { max-width: 1184px; }
 .board-heading { margin-bottom: 22px; }
 .eyebrow { font-size: .78rem; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }

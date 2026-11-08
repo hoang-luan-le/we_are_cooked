@@ -10,7 +10,7 @@ npm ci
 npm run dev
 ```
 
-Open [localhost:3000](http://localhost:3000) and select **Start Night 2D**. The fixture is enabled in development. To preview the built fixture, run `npm run build` and `NIGHT_FIXTURES=1 npm start`. In PowerShell, set `$env:NIGHT_FIXTURES = "1"` before starting.
+Open [localhost:3000](http://localhost:3000) and select **Start simulation**. Pick a level and start solo, or join the rehearsal cohort with `NIGHT24`. `NIGHT00` exercises the expired-code response. The development entry fixture saves the exercise and rollback progress in this browser. The role and member list are scenario data. To preview the built fixture, run `npm run build` and `NIGHT_FIXTURES=1 npm start`. In PowerShell, set `$env:NIGHT_FIXTURES = "1"` before starting.
 
 The offline briefing works without a relay. To try the optional Dana development relay, follow the [relay instructions](../../services/api/voice/README.md) and set `DANA_DEV_WS_BASE` to its WebSocket origin, such as `ws://localhost:8001`, before starting Next.js. Choose **Answer Dana by text** or **Answer Dana with voice** on the incoming call. The briefing labels the relay engine as Deepgram or scripted. If voice fails, the same briefing continues in relay text. Open `/night?fixture=1` to explicitly run the offline fixture.
 
@@ -22,7 +22,7 @@ Start the [team API](../../services/api/README.md) on loopback. Then run Next.js
 NIGHT_API_ORIGIN=http://127.0.0.1:8000 npm run dev -- --hostname 127.0.0.1
 ```
 
-The local API mode uses the shared `inc_demo` incident and `demo-a` member. Change the member with `NIGHT_DEMO_USER` if your backend demo team differs. The API supplies phase, allowed actions, metrics, and discounts. Log samples and deploy details are labeled scenario content until the backend serves them. Open `/night?fixture=1` to run the offline scenario separately.
+Select **Open local API demo** on the entry screen to resume the configured incident. The local API mode uses the shared `inc_demo` incident and `demo-a` member. Change the member with `NIGHT_DEMO_USER` if your backend demo team differs. The API supplies phase, allowed actions, metrics, and discounts. Log samples and deploy details are labeled scenario content until the backend serves them. Live cohort entry requires a backend join, membership, and session contract. Open `/night?fixture=1` to run the stateless offline scenario separately.
 
 ## Verify
 
