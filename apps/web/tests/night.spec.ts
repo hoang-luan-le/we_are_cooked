@@ -12,8 +12,8 @@ test("walks from the landing through diagnosis and simulated recovery", async ({
   let socketCount = 0;
   page.on("websocket", () => socketCount++);
   await page.goto("/");
-  await page.getByRole("link", { name: "Start Night 2D" }).click();
-  await expect(page).toHaveURL(/\/night$/);
+  await page.getByRole("link", { name: "Start simulation" }).click();
+  await expect(page).toHaveURL(/\/start$/);
   await page.goto("/night?fixture=1");
   await expect(page.getByText("Development fixture", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Answer Dana" }).focus();

@@ -10,7 +10,7 @@ npm ci
 npm run dev
 ```
 
-Open [localhost:3000](http://localhost:3000) and select **Start Night 2D**. The fixture is enabled in development. To preview the built fixture, run `npm run build` and `NIGHT_FIXTURES=1 npm start`. In PowerShell, set `$env:NIGHT_FIXTURES = "1"` before starting.
+Open [localhost:3000](http://localhost:3000) and select **Start simulation**. Pick a level and start solo, or join the rehearsal cohort with `NIGHT24`. `NIGHT00` exercises the expired-code response. The development entry fixture saves the exercise, briefing checkpoint, and rollback progress in this browser. A resumed open briefing restarts the scripted captions. The role and member list are scenario data. To preview the built fixture, run `npm run build` and `NIGHT_FIXTURES=1 npm start`. In PowerShell, set `$env:NIGHT_FIXTURES = "1"` before starting.
 
 The offline briefing works without a relay. To try the optional Dana development relay, follow the [relay instructions](../../services/api/voice/README.md) and set `DANA_DEV_WS_BASE` to its WebSocket origin, such as `ws://localhost:8001`, before starting Next.js. Choose **Answer Dana by text** or **Answer Dana with voice** on the incoming call. The briefing labels the relay engine as Deepgram or scripted. If voice fails, the same briefing continues in relay text. Open `/night?fixture=1` to explicitly run the offline fixture.
 
@@ -22,7 +22,13 @@ Start the [team API](../../services/api/README.md) on loopback. Then run Next.js
 NIGHT_API_ORIGIN=http://127.0.0.1:8000 npm run dev -- --hostname 127.0.0.1
 ```
 
-The local API mode uses the shared `inc_demo` incident and `demo-a` member. Change the member with `NIGHT_DEMO_USER` if your backend demo team differs. The API supplies phase, allowed actions, metrics, and discounts. Log samples and deploy details are labeled scenario content until the backend serves them. Open `/night?fixture=1` to run the offline scenario separately.
+Select **Open local API demo** on the entry screen to resume the configured incident. The local API mode uses the shared `inc_demo` incident and `demo-a` member. Change the member with `NIGHT_DEMO_USER` if your backend demo team differs. The API supplies phase, allowed actions, metrics, and discounts. Log samples and deploy details are labeled scenario content until the backend serves them. The shared demo stays available alongside the opt-in team entry flow. Open `/night?fixture=1` to run the stateless offline scenario separately.
+
+## Connect the team entry API
+
+Run the team backend at [`05ecda9`](https://github.com/hoang-luan-le/we_are_cooked/commit/05ecda9c55620412e1c2c6b8da648623dad8283d) or a compatible commit on loopback. Start the web app with both `NIGHT_API_ORIGIN=http://127.0.0.1:8000` and `NIGHT_TEAM_ENTRY=1`. Team entry lets the configured demo member start a solo incident, join an existing cohort, and start a new incident with up to three selected cohort members. The cohort and incident links are saved per demo member in this browser. Share an incident URL only with its selected teammates. They can open it from an app instance configured with their own demo handle.
+
+The API currently returns teammate handles and incident IDs. Role assignment, invite expiry, account-level resume discovery, and snapshot revisions need a backend contract. The local team API mode requires a loopback backend and a demo identity. It is for local rehearsal.
 
 ## Verify
 
@@ -39,4 +45,10 @@ To verify the real API, start a separate local backend instance. The check reset
 
 ```sh
 NIGHT_TEST_API_ORIGIN=http://127.0.0.1:8000 npm run test:browser -- tests/night-api.spec.ts
+```
+
+Run the opt-in team entry browser check against a separate team backend instance.
+
+```sh
+NIGHT_TEST_TEAM_ENTRY=1 NIGHT_TEST_API_ORIGIN=http://127.0.0.1:8000 npm run test:browser -- tests/team-entry.spec.ts
 ```

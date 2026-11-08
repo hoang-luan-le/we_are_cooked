@@ -107,14 +107,26 @@ function LockedPanel({ title, id, pending, onOpen }: {
   );
 }
 
-export function IncidentBoard({ heading, snapshot, pending, finalCaption, onAction }: {
+function recoveryStep(startedAt: number) {
+  let remaining = Date.now() - startedAt;
+  for (let index = 0; index < RECOVERY.length; index++) {
+    remaining -= RECOVERY[index].delay;
+    if (remaining < 0) return index;
+  }
+  return RECOVERY.length;
+}
+
+export function IncidentBoard({ heading, snapshot, pending, finalCaption, onAction, initialRollbackAt = null, onFixtureRollback }: {
   heading: RefObject<HTMLHeadingElement | null>;
   snapshot?: NightSnapshot;
   pending: boolean;
   finalCaption?: string;
   onAction: (intent: NightAction) => Promise<boolean>;
+  initialRollbackAt?: number | null;
+  onFixtureRollback?: (startedAt: number) => void;
 }) {
-  const [step, setStep] = useState<number | null>(null);
+  const [step, setStep] = useState(() => initialRollbackAt === null ? null : recoveryStep(initialRollbackAt));
+  const rollbackStart = useRef(initialRollbackAt);
   const dialog = useRef<HTMLDialogElement>(null);
   const statusHeading = useRef<HTMLHeadingElement>(null);
   const incident = snapshot?.incident;
@@ -136,9 +148,12 @@ export function IncidentBoard({ heading, snapshot, pending, finalCaption, onActi
   }
 
   useEffect(() => {
-    if (step === null || step >= RECOVERY.length) return;
+    const startedAt = rollbackStart.current;
+    if (startedAt === null || step === null || step >= RECOVERY.length) return;
     if (step === 0) statusHeading.current?.focus();
-    const timer = window.setTimeout(() => setStep(step + 1), RECOVERY[step].delay);
+    const nextOffset = RECOVERY.slice(0, step + 1).reduce((elapsed, point) => elapsed + point.delay, 0);
+    const delay = Math.max(0, startedAt + nextOffset - Date.now());
+    const timer = window.setTimeout(() => setStep(Math.max(step + 1, recoveryStep(startedAt))), delay);
     return () => window.clearTimeout(timer);
   }, [step]);
 
@@ -200,7 +215,12 @@ export function IncidentBoard({ heading, snapshot, pending, finalCaption, onActi
                 void onAction({ action: "rollback" }).then(accepted => {
                   if (accepted) statusHeading.current?.focus();
                 });
-              } else setStep(previous => previous ?? 0);
+              } else if (rollbackStart.current === null) {
+                const startedAt = Date.now();
+                rollbackStart.current = startedAt;
+                onFixtureRollback?.(startedAt);
+                setStep(0);
+              }
             }}>
               <button type="button" onClick={() => dialog.current?.close()}>Cancel</button>
               <button type="submit" className="primary" disabled={!canRollback}>Confirm rollback</button>

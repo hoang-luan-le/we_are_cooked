@@ -16,6 +16,7 @@ export default defineConfig({
     url: origin,
     env: {
       NIGHT_FIXTURES: "1",
+      NIGHT_TEAM_ENTRY: process.env.NIGHT_TEST_TEAM_ENTRY ?? "",
       NIGHT_API_ORIGIN: process.env.NIGHT_TEST_API_ORIGIN ?? "",
       DANA_DEV_WS_BASE: "ws://127.0.0.1:3211",
       NEXT_TELEMETRY_DISABLED: "1",

@@ -40,7 +40,8 @@ test("uses the demo API for Answer, diagnosis, rollback, recovery and refresh", 
     } else await route.continue();
   });
 
-  await page.goto("/night");
+  await page.goto("/start");
+  await page.getByRole("link", { name: "Open local API demo" }).click();
   await expect(page.getByText("Local demo API", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Answer Dana by text" }).click();
   await expect(page.getByRole("heading", { name: "Dana’s briefing" })).toBeVisible();

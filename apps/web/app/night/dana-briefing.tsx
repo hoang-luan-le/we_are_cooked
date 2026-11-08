@@ -9,11 +9,11 @@ type Caption = { role: "dana" | "you"; text: string };
 type RelayState = "idle" | "connecting" | "listening" | "thinking" | "speaking" | "draining" | "ended" | "failed";
 type DanaEngine = Extract<DanaServerMsg, { type: "ready" }>["engine"];
 
-export function useDanaBriefing() {
+export function useDanaBriefing(resumeFixture = false) {
   const [mode, setMode] = useState<DanaMode | "fixture">("fixture");
-  const [state, setState] = useState<RelayState>("idle");
+  const [state, setState] = useState<RelayState>(resumeFixture ? "listening" : "idle");
   const [engine, setEngine] = useState<DanaEngine>();
-  const [captions, setCaptions] = useState<Caption[]>([]);
+  const [captions, setCaptions] = useState<Caption[]>(() => resumeFixture ? [{ role: "dana", text: BRIEFING }] : []);
   const [notice, setNotice] = useState("");
   const [muted, setMuted] = useState(false);
   const connection = useRef<DanaConnection>(null);
