@@ -25,9 +25,13 @@ export interface NextHint { topic: string | null; hint: string }
 export interface PullRequestInfo {
   number: number;
   merged: boolean;
-  ci_passed: boolean | null;
-  substantive_review: boolean;
-  mentor_review: string | null;
+  ci_passed: boolean | null;               // null = CI running or not found
+  substantive_review: boolean;             // a non-author review with 40+ chars or inline comments
+  mentor_review: string | null;            // GitHub login of the mentor (MENTOR_GITHUB) who reviewed
+  url: string;
+  head_sha: string;
+  ci: "success" | "failure" | "pending" | "none";
+  review_count: number;                    // reviewers other than the author; only the mentor is named
 }
 
 // ---- shift handoff (typed; night pair writes, morning pair rates) ----
@@ -52,7 +56,11 @@ export type ErrorCode =
   | "answer_first" | "already_rolled_back" | "pr_not_ready" | "not_allowed_now" | "unknown_action"
   | "unknown_panel" | "text_required" | "text_too_long" | "idempotency_conflict" | "debrief_not_ready"
   | "handoff_not_ready" | "handoff_incomplete" | "handoff_rated" | "not_night_pair" | "night_pair_cannot_rate"
-  | "no_handoff" | "not_teammate" | "unknown_handle" | "not_morning_pair";
+  | "no_handoff" | "not_teammate" | "unknown_handle" | "not_morning_pair"
+  | "github_off" | "bad_pr_url" | "repo_not_allowed" | "github_unavailable"
+  | "not_participant" | "not_a_teammate" | "unknown_choice" | "check_closed" | "check_not_ready"
+  | "handle_required" | "handle_taken" | "handle_already_set" | "bad_handle" | "not_signed_in"
+  | "pr_wrong_base" | "pr_not_a_fix" | "pr_too_old" | "pr_already_linked";
 export interface ApiError { code: ErrorCode; detail: string }        // auth/404/validation errors have only `detail`
 
 // ---- rubric (0/2/4 each, out of 20) ----
@@ -158,3 +166,95 @@ export interface Cohort { id: string; name: string; join_code: string; created_b
 export interface CreateCohortRequest { name: string }                   // POST /api/cohorts -> 201 Cohort
 export interface JoinCohortRequest { join_code: string }                // POST /api/cohorts/join -> Cohort (case/space-insensitive)
 // GET /api/cohorts/{id} -> Cohort
+
+// ---- panels (GET, no auth; open_panel via /action still unlocks Dana's facts) ----
+// GET /api/incident/{id}/logs?limit=1..200&level=INFO|WARN|ERROR&q=text -> { lines: LogLine[] } (oldest first)
+export interface LogLine { time: string; level: "INFO" | "WARN" | "ERROR"; service: string; message: string }
+// GET /api/incident/{id}/deploys -> DeployHistory
+export interface DeployFile { filename: string; patch: string }          // unified diff hunk(s)
+export interface Release {
+  version: string; at: string; day: string; author: string; title: string;
+  live: boolean;
+  diff_source: "github" | "scenario";      // scenario = offline fallback, same diff
+  files: DeployFile[];
+}
+export interface DeployHistory { live_version: string; releases: Release[] }
+// GET /api/incident/{id}/runbooks -> { runbooks: {name, title}[] };  GET .../runbooks/{name} -> Runbook
+export interface Runbook { name: string; title: string; steps: string[] }
+// GET /api/incident/{id}/metrics/history?window_s=5..3600&step_s=5..300 -> MetricsHistory
+export interface MetricsSample extends Metrics { sim_time: string }     // "HH:MM:SS"
+export interface MetricsHistory {
+  samples: MetricsSample[];                // may start before the page: errors climb from the bad release
+  events: { label: string; sim_time: string }[];
+  baseline: Metrics;
+}
+
+// ---- POST /api/pr/verify -> IncidentState (teammates only) ----
+// Reads the PR from GitHub (PILOT_REPOS only) and records it; merged + CI success unlocks deploy_fix.
+// Only a fix for THIS incident counts: base = main, changes code under checkout/, opened after the page.
+// 422 bad_pr_url | repo_not_allowed | pr_wrong_base | pr_not_a_fix | pr_too_old,
+// 409 pr_already_linked (a merged fix can't be swapped), 502 github_unavailable, 503 github_off.
+export interface VerifyPrRequest { incident_id: string; pr_url: string } // https://github.com/<owner>/<repo>/pull/<n>
+
+// ---- profile, connections, network, evidence (privacy: users may be minors) ----
+// GET /api/me, PATCH /api/me (send only the fields you change; null clears) -> Me
+export interface Me { handle: string; github_login: string | null; contact: string | null; public_evidence: boolean }
+export interface ProfilePatch {
+  github_login?: string | null;
+  contact?: string | null;                 // max 120
+  public_evidence?: boolean;               // opt in to GET /api/evidence/{handle}; off by default
+}
+// POST /api/connections -> { ok, incident_id, to_user, work_again }. Private: never reveals the other answer.
+// Only people who took part (acted, or rated the handoff); being named isn't enough.
+// 409 not_participant, 422 not_a_teammate.
+export interface ConnectionRequest { incident_id: string; to_user: string; work_again: boolean; note?: string }
+// GET /api/connections/pending -> { pending: { incident_id: string; handle: string }[] }
+// GET /api/network -> { cards: NetworkCard[] }  (only where BOTH said yes; contact appears only here)
+export interface NetworkCard {
+  handle: string; incident_id: string;
+  basis: { level: Level; phase: Phase; pr_url: string | null };
+  contact: string | null; github_login: string | null;
+}
+// GET /api/me/evidence -> Evidence (your own, always).
+// GET /api/evidence/{handle} -> Evidence, only if that person opted in (404 otherwise).
+// Handles only: never contact details or GitHub logins.
+export interface IncidentEvidence {
+  incident_id: string; level: Level; phase: Phase; status: Status;
+  role: "night" | "morning" | "teammate";
+  findings_shared: number; status_updates: number;
+  handoff_rating: number | null;
+  pr: { url: string; merged: boolean; ci: PullRequestInfo["ci"]; reviewers: number; mentor_reviewed: boolean } | null;
+  rubric: RubricResult | null;
+}
+export interface Evidence { handle: string; incidents: IncidentEvidence[]; connections: number }
+
+// ---- GET /api/jobs (no auth) -> JobsSnapshot ----
+// Real Adzuna listings saved before the demo by `python adzuna.py`; shows even if Adzuna is down.
+// No snapshot yet -> fetched_at null, searches [], plus `message`. Never invented.
+export interface JobListing {
+  title: string; company: string; location: string; created: string; url: string;
+  salary_min: number | null; salary_max: number | null;
+}
+export interface JobsSnapshot {
+  source: "Adzuna"; fetched_at: string | null;   // ISO date: show it ("listings as of ...")
+  searches: { what: string; count: number; listings: JobListing[] }[];
+  message?: string;
+}
+
+// ---- before/after check: GET /api/checks?incident_id=..., POST /api/checks -> CheckView (teammates only) ----
+// Same question before and after. Scores appear only once both are answered.
+// 409 check_not_ready (after: checkout must be stable and "before" answered), check_closed; 422 unknown_choice.
+export interface CheckRequest { incident_id: string; stage: "before" | "after"; choice: string; explanation?: string }
+export interface CheckAnswer { choice: string; explanation: string; score?: 0 | 2 | 4 }
+export interface CheckView {
+  incident_id: string; question: string; choices: { id: string; text: string }[];
+  before: CheckAnswer | null; after: CheckAnswer | null;
+  improved: number | null;                 // after.score - before.score, once both are in
+}
+
+// ---- sign-in ----
+// Demo mode (AUTH0_DOMAIN empty): header X-Demo-User: <handle from DEMO_TEAM>.
+// Auth0 mode: header Authorization: Bearer <Auth0 access token for AUTH0_AUDIENCE>; X-Demo-User is refused (401).
+// First sign-in: every route answers 403 handle_required until POST /api/me/handle -> Me.
+// Handles are pseudonymous: 1-32 of [a-z0-9_-]. The Auth0 account id is never shown to anyone.
+export interface ClaimHandleRequest { handle: string }  // 409 handle_taken | handle_already_set, 422 bad_handle

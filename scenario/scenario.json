@@ -3,32 +3,71 @@
   "id": "shopnorth-checkout-v2140",
   "incident_id": "inc_demo",
   "company": "ShopNorth (fictional example)",
-  "clock": { "page_at": "02:04" },
-  "panels": ["dashboard", "logs", "deploys", "runbook"],
-  "releases": { "bad": "v2.14.0", "bad_at": "01:47", "good": "v2.13.9" },
-
+  "clock": {
+    "page_at": "02:04"
+  },
+  "panels": [
+    "dashboard",
+    "logs",
+    "deploys",
+    "runbook"
+  ],
+  "releases": {
+    "bad": "v2.14.0",
+    "bad_at": "01:47",
+    "good": "v2.13.9"
+  },
   "metrics": {
-    "baseline": { "error_rate": 0.4, "orders_per_min": 420, "p95_ms": 380 },
-    "at_page":  { "error_rate": 27.1, "orders_per_min": 307, "p95_ms": 1291 },
-    "broken":   { "error_rate": 31.2, "orders_per_min": 290, "p95_ms": 1450 },
+    "baseline": {
+      "error_rate": 0.4,
+      "orders_per_min": 420,
+      "p95_ms": 380
+    },
+    "at_page": {
+      "error_rate": 27.1,
+      "orders_per_min": 307,
+      "p95_ms": 1291
+    },
+    "broken": {
+      "error_rate": 31.2,
+      "orders_per_min": 290,
+      "p95_ms": 1450
+    },
     "ramp_s": 90,
     "recovery_s": 10,
-    "snooze": { "ring_again_s": 15, "error_rate_penalty": 1.5 },
-    "restart_dip": { "duration_s": 8, "error_rate": 6.0, "orders_per_min": 395, "p95_ms": 520 }
+    "snooze": {
+      "ring_again_s": 15,
+      "error_rate_penalty": 1.5
+    },
+    "restart_dip": {
+      "duration_s": 8,
+      "error_rate": 6.0,
+      "orders_per_min": 395,
+      "p95_ms": 520
+    }
   },
-
   "dana_knows": [
-    { "topic": "alert", "text": "The checkout error-rate alert fired at 2:04 a.m." },
-    { "topic": "impact", "text": "About a third of checkouts are failing, in the middle of the flash sale." },
-    { "topic": "changes tonight", "text": "The team shipped a release, v2.14.0, at 1:47 a.m. I don't know what was in it." },
-    { "topic": "other alerts", "text": "There's also a high CPU warning on search-service." }
+    {
+      "topic": "alert",
+      "text": "The checkout error-rate alert fired at 2:04 a.m."
+    },
+    {
+      "topic": "impact",
+      "text": "About a third of checkouts are failing, in the middle of the flash sale."
+    },
+    {
+      "topic": "changes tonight",
+      "text": "The team shipped a release, v2.14.0, at 1:47 a.m. I don't know what was in it."
+    },
+    {
+      "topic": "other alerts",
+      "text": "There's also a high CPU warning on search-service."
+    }
   ],
-
   "stakeholders": {
     "update_every_s": 120,
     "nudge_message": "Dana: Any update? The VP is asking what to tell customers."
   },
-
   "action_results": {
     "answer": "You picked up. Dana is on the line.",
     "snooze": "Snoozed. The phone will ring again in a moment.",
@@ -41,69 +80,218 @@
     "restart_search": "Restarted search-service. Its CPU warning cleared; checkout errors did not change.",
     "deploy_fix": "Deployed the fix. Checkout is healthy and discounts are back ON."
   },
-
   "help_ladder": [
     {
       "topic": "impact",
       "source": "dashboard",
-      "found_when": { "panels_opened": ["dashboard"] },
+      "found_when": {
+        "panels_opened": [
+          "dashboard"
+        ]
+      },
       "fact": "Error rate jumped from 0.4% to about 31% starting around 01:50, and orders per minute fell from 420 to about 290.",
       "hint": "Open the dashboard. When did the errors start, and how many customers are hit?"
     },
     {
       "topic": "who_fails",
       "source": "logs",
-      "found_when": { "panels_opened": ["logs"] },
+      "found_when": {
+        "panels_opened": [
+          "logs"
+        ]
+      },
       "fact": "The failing requests are guest checkouts (guest=true), all with KeyError: 'tier' in loyalty_percent.",
       "hint": "Open the logs. Is every customer failing, or only some of them?"
     },
     {
       "topic": "deploy_diff",
       "source": "deploys",
-      "found_when": { "panels_opened": ["deploys"] },
+      "found_when": {
+        "panels_opened": [
+          "deploys"
+        ]
+      },
       "fact": "v2.14.0 shipped at 01:47 and changed checkout/pricing.py: loyalty_percent now reads customer.profile[\"tier\"].",
       "hint": "Open the deploy history. What changed right before the errors started?"
     },
     {
       "topic": "runbook",
       "source": "runbook",
-      "found_when": { "panels_opened": ["runbook"] },
+      "found_when": {
+        "panels_opened": [
+          "runbook"
+        ]
+      },
       "fact": "The runbook says: stop the damage first. If a release broke checkout, roll back, then investigate.",
       "hint": "Check the runbook. What does it say to do first when a release breaks checkout?"
     },
     {
       "topic": "mitigation",
       "source": "actions",
-      "found_when": { "action": "rollback" },
+      "found_when": {
+        "action": "rollback"
+      },
       "fact": "The team rolled back to v2.13.9. Errors are going back to normal. Loyalty discounts are OFF until a fix ships.",
       "hint": "Customers are still failing. Is there a safe way to undo tonight's change while you keep investigating?"
     },
     {
       "topic": "missing_field",
       "source": "logs + deploys",
-      "found_when": { "panels_opened": ["logs", "deploys"], "team_names_cause": true },
+      "found_when": {
+        "panels_opened": [
+          "logs",
+          "deploys"
+        ],
+        "team_names_cause": true
+      },
       "fact": "Guest customers have no loyalty tier, so the new code's customer.profile[\"tier\"] raises KeyError.",
       "hint": "Compare the failing requests with the new code. What does the new code expect every customer to have?"
     },
     {
       "topic": "fix",
       "source": "github",
-      "found_when": { "status": "fixed" },
+      "found_when": {
+        "status": "fixed"
+      },
       "fact": "The fix is merged with passing CI and deployed.",
       "hint": "Write a failing test that shows the bug, then fix it in the pilot repo and open a PR."
     }
   ],
   "all_found_hint": "You've found everything. Write it down for the morning shift: impact, cause, action and risk.",
-
+  "logs": {
+    "requests_per_second": 4,
+    "guest_share": 0.31,
+    "member_line": "POST /api/checkout 200 order={order} customer={customer} tier={tier} total=${total}",
+    "error_line": "POST /api/checkout 500 order={order} customer=guest guest=true KeyError: 'tier' at checkout/pricing.py:19 in loyalty_percent",
+    "guest_ok_line": "POST /api/checkout 200 order={order} customer=guest guest=true total=${total}",
+    "noise_line": "search-service cpu=93% p95=210ms (high CPU warning)",
+    "noise_every_s": 15,
+    "tiers": [
+      "bronze",
+      "silver",
+      "gold"
+    ]
+  },
+  "deploys": [
+    {
+      "version": "v2.13.9",
+      "at": "16:12",
+      "day": "yesterday",
+      "author": "priya.k (example)",
+      "title": "Checkout pricing with tax",
+      "files": []
+    },
+    {
+      "version": "v2.14.0",
+      "at": "01:47",
+      "day": "tonight",
+      "author": "sam.r (example)",
+      "title": "Loyalty-tier discounts at checkout",
+      "files": [
+        {
+          "filename": "checkout/pricing.py",
+          "patch": "@@ -3,16 +3,24 @@ from __future__ import annotations\n \n from decimal import ROUND_HALF_UP, Decimal\n \n-from checkout.models import Cart\n+from checkout.models import Cart, Customer\n \n TAX_RATE = Decimal(\"0.13\")\n CENT = Decimal(\"0.01\")\n+LOYALTY_PERCENT = {\"bronze\": 5, \"silver\": 10, \"gold\": 15}\n \n \n def subtotal(cart: Cart) -> Decimal:\n     return sum((item.price * item.quantity for item in cart.items), Decimal(\"0\"))\n \n \n+def loyalty_percent(customer: Customer) -> int:\n+    \"\"\"Loyalty members get a discount by tier.\"\"\"\n+    tier = customer.profile[\"tier\"]\n+    return LOYALTY_PERCENT[tier]\n+\n+\n def order_total(cart: Cart) -> Decimal:\n-    \"\"\"Subtotal plus tax, rounded to the cent.\"\"\"\n-    return (subtotal(cart) * (1 + TAX_RATE)).quantize(CENT, rounding=ROUND_HALF_UP)\n+    \"\"\"Subtotal minus the loyalty discount, plus tax, rounded to the cent.\"\"\"\n+    discounted = subtotal(cart) * (100 - loyalty_percent(cart.customer)) / 100\n+    return (discounted * (1 + TAX_RATE)).quantize(CENT, rounding=ROUND_HALF_UP)"
+        }
+      ]
+    }
+  ],
+  "fix_version": "v2.14.1",
+  "runbooks": {
+    "checkout-errors": {
+      "title": "Checkout error rate is high",
+      "steps": [
+        "Check the dashboard: when did errors start, and how many orders are failing?",
+        "Check the deploy history: did a release go out just before the errors started?",
+        "If a release broke checkout, stop the damage first: roll back to the last good version.",
+        "Confirm recovery on the dashboard, then post a status update: impact, cause, action, risk.",
+        "Find the root cause in the logs and the diff; fix it with a test, through a reviewed PR."
+      ]
+    }
+  },
+  "job_searches": [
+    "site reliability engineer",
+    "devops engineer",
+    "junior software developer",
+    "production support analyst"
+  ],
+  "check": {
+    "question": "It's 2 a.m. Checkout errors jumped right after tonight's release. What do you do first?",
+    "choices": [
+      {
+        "id": "a",
+        "text": "Roll back the release to stop the damage, then find the cause."
+      },
+      {
+        "id": "b",
+        "text": "Read the logs until you find the exact bug, before changing anything."
+      },
+      {
+        "id": "c",
+        "text": "Restart the checkout service."
+      },
+      {
+        "id": "d",
+        "text": "Wait a few minutes to see if it recovers on its own."
+      }
+    ]
+  },
+  "pilot": {
+    "base_branch": "main",
+    "fix_paths": [
+      "checkout/"
+    ]
+  },
   "answer_key": {
     "root_cause": "v2.14.0 added loyalty-tier discounts. loyalty_percent reads customer.profile[\"tier\"], guests have no tier, so checkout raises KeyError: 'tier' at checkout/pricing.py:19.",
     "fix": "A missing or unknown tier gives a 0% loyalty discount. Tests must reject a lazy try/except that returns a $0 order total.",
-    "cause_keywords": ["tier", "profile", "missing"],
+    "cause_keywords": [
+      "tier",
+      "profile",
+      "missing"
+    ],
     "communication_keywords": {
-      "impact": ["checkout", "customer", "order", "third", "percent", "%", "failing", "failed", "errors"],
-      "cause": ["tier", "guest", "loyalty", "v2.14", "release", "deploy", "bug"],
-      "action": ["rolled back", "rollback", "roll back", "v2.13.9", "reverted", "fixed", "fix"],
-      "risk": ["discount", "until", "risk", "monitor", "watch"]
+      "impact": [
+        "checkout",
+        "customer",
+        "order",
+        "third",
+        "percent",
+        "%",
+        "failing",
+        "failed",
+        "errors"
+      ],
+      "cause": [
+        "tier",
+        "guest",
+        "loyalty",
+        "v2.14",
+        "release",
+        "deploy",
+        "bug"
+      ],
+      "action": [
+        "rolled back",
+        "rollback",
+        "roll back",
+        "v2.13.9",
+        "reverted",
+        "fixed",
+        "fix"
+      ],
+      "risk": [
+        "discount",
+        "until",
+        "risk",
+        "monitor",
+        "watch"
+      ]
+    },
+    "check_scores": {
+      "a": 4,
+      "b": 2,
+      "c": 0,
+      "d": 0
     }
   }
 }

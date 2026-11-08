@@ -45,6 +45,12 @@ class IncidentStore:
     def now(self) -> float:
         return self._clock()
 
+    def all(self) -> list[tuple[IncidentState, float]]:
+        """Every incident, settled to now (for evidence and pending connections)."""
+        with self._lock:
+            now = self._clock()
+            return [(self._settled(incident_id, now), now) for incident_id in tuple(self._incidents)]
+
     def ids(self) -> tuple[str, ...]:
         with self._lock:
             return tuple(self._incidents)
