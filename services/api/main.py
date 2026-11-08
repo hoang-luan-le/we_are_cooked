@@ -20,7 +20,8 @@ from config import Settings
 from db import MEMORY, Database, open_database
 from engine.errors import ActionRejected
 from github_client import GitHubClient
-from routes import cohorts, debrief, demo, handoff, incidents, panels, pr
+from network import NetworkStore
+from routes import cohorts, debrief, demo, handoff, incidents, network, panels, pr
 from routes.deps import Runtime
 from scenario_loader import ScenarioError, load_scenario
 from store import IncidentStore
@@ -96,6 +97,7 @@ def create_app(
         app.state.settings = resolved
         app.state.db = db
         app.state.cohorts = CohortStore(db, clock)  # independent of the scenario
+        app.state.network = NetworkStore(db, clock)
         app.state.runtime, app.state.scenario_error = _start_runtime(resolved, clock, db)
         app.state.github = _github(resolved, github_transport)
         try:
@@ -114,6 +116,7 @@ def create_app(
     app.include_router(pr.router)
     app.include_router(debrief.router)
     app.include_router(cohorts.router)
+    app.include_router(network.router)
     app.include_router(demo.router)
     app.include_router(dana_router)  # WS /ws/voice (owned by AI)
 

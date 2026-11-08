@@ -58,7 +58,8 @@ export type ErrorCode =
   | "unknown_panel" | "text_required" | "text_too_long" | "idempotency_conflict" | "debrief_not_ready"
   | "handoff_not_ready" | "handoff_incomplete" | "handoff_rated" | "not_night_pair" | "night_pair_cannot_rate"
   | "no_handoff" | "not_teammate" | "unknown_handle" | "not_morning_pair"
-  | "github_off" | "bad_pr_url" | "repo_not_allowed" | "github_unavailable";
+  | "github_off" | "bad_pr_url" | "repo_not_allowed" | "github_unavailable"
+  | "not_participant" | "not_a_teammate";
 export interface ApiError { code: ErrorCode; detail: string }        // auth/404/validation errors have only `detail`
 
 // ---- rubric (0/2/4 each, out of 20) ----
@@ -191,3 +192,28 @@ export interface MetricsHistory {
 // Reads the PR from GitHub (PILOT_REPOS only) and records it; merged + CI success unlocks deploy_fix.
 // 422 bad_pr_url | repo_not_allowed, 502 github_unavailable, 503 github_off.
 export interface VerifyPrRequest { incident_id: string; pr_url: string } // https://github.com/<owner>/<repo>/pull/<n>
+
+// ---- profile, connections, network, evidence (privacy: users may be minors) ----
+// GET /api/me, PATCH /api/me (send only the fields you change; null clears) -> Me
+export interface Me { handle: string; github_login: string | null; contact: string | null; is_mentor: boolean }
+export interface ProfilePatch { github_login?: string | null; contact?: string | null }  // contact max 120
+// POST /api/connections -> { ok, incident_id, to_user, work_again }. Private: never reveals the other answer.
+// Only people who worked the incident together (acted, or named in the handoff). 409 not_participant, 422 not_a_teammate.
+export interface ConnectionRequest { incident_id: string; to_user: string; work_again: boolean; note?: string }
+// GET /api/connections/pending -> { pending: { incident_id: string; handle: string }[] }
+// GET /api/network -> { cards: NetworkCard[] }  (only where BOTH said yes; contact appears only here)
+export interface NetworkCard {
+  handle: string; incident_id: string;
+  basis: { level: Level; phase: Phase; pr_url: string | null };
+  contact: string | null; github_login: string | null;
+}
+// GET /api/evidence/{handle} -> Evidence (public; handles only, never contact details or GitHub logins)
+export interface IncidentEvidence {
+  incident_id: string; level: Level; phase: Phase; status: Status;
+  role: "night" | "morning" | "teammate";
+  findings_shared: number; status_updates: number;
+  handoff_rating: number | null;
+  pr: { url: string; merged: boolean; ci: PullRequestInfo["ci"]; reviewers: number; mentor_reviewed: boolean } | null;
+  rubric: RubricResult | null;
+}
+export interface Evidence { handle: string; incidents: IncidentEvidence[]; connections: number }

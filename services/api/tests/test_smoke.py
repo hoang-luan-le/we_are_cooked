@@ -856,6 +856,92 @@ def test_deploys_use_the_real_diff_from_github_with_offline_fallback():
         assert bad["diff_source"] == "scenario" and 'profile["tier"]' in bad["files"][0]["patch"]
 
 
+# ---------- profile, connections, network, evidence ----------
+
+def _two_shifts(h: Harness) -> None:
+    """duy works the night; tung is named as the morning pair."""
+    h.night_shift()
+    _post_handoff(h, {**HANDOFF, "morning_pair": ["tung"]})
+
+
+def _connect(h: Harness, headers: dict, to_user: str, yes: bool = True):
+    return h.client.post("/api/connections", headers=headers,
+                         json={"incident_id": INC, "to_user": to_user, "work_again": yes})
+
+
+def test_profile_get_and_patch():
+    with Harness() as h:
+        assert h.client.get("/api/me", headers=TEAM).json() == {
+            "handle": "duy", "github_login": None, "contact": None, "is_mentor": False}
+        me = h.client.patch("/api/me", json={"github_login": "Mentor-Ana", "contact": " duy@example.com "},
+                            headers=TEAM).json()
+        assert me["github_login"] == "mentor-ana" and me["contact"] == "duy@example.com" and me["is_mentor"]
+        assert h.client.patch("/api/me", json={"contact": None}, headers=TEAM).json()["github_login"] == "mentor-ana"
+        assert h.client.get("/api/me", headers=TEAM).json()["contact"] is None
+        assert h.client.patch("/api/me", json={"github_login": "bad login!"}, headers=TEAM).status_code == 422
+        assert h.client.get("/api/me", headers=RELAY).status_code == 403
+
+
+def test_contact_shows_only_after_a_mutual_yes():
+    with Harness() as h:
+        _two_shifts(h)
+        h.client.patch("/api/me", json={"contact": "tung@example.com"}, headers=MORNING)
+        assert h.client.get("/api/connections/pending", headers=TEAM).json()["pending"] == [
+            {"incident_id": INC, "handle": "tung"}]
+        answer = _connect(h, TEAM, "tung").json()
+        assert answer == {"ok": True, "incident_id": INC, "to_user": "tung", "work_again": True}
+        assert h.client.get("/api/network", headers=TEAM).json()["cards"] == []      # one-sided: nothing
+        assert h.client.get("/api/network", headers=MORNING).json()["cards"] == []   # and tung can't tell
+        assert h.client.get("/api/connections/pending", headers=TEAM).json()["pending"] == []
+        _connect(h, MORNING, "duy")
+        card = h.client.get("/api/network", headers=TEAM).json()["cards"][0]
+        assert card["handle"] == "tung" and card["contact"] == "tung@example.com" and card["incident_id"] == INC
+        _connect(h, MORNING, "duy", yes=False)  # changed their mind
+        assert h.client.get("/api/network", headers=TEAM).json()["cards"] == []
+
+
+def test_only_people_who_worked_together_can_answer():
+    with Harness() as h:
+        _two_shifts(h)
+        assert _connect(h, OTHER, "duy").json()["code"] == "not_participant"   # demo-a never worked it
+        assert _connect(h, TEAM, "demo-a").json()["code"] == "not_a_teammate"
+        assert _connect(h, TEAM, "duy").json()["code"] == "not_a_teammate"     # yourself
+        assert _connect(h, RELAY, "duy").status_code == 403
+
+
+def test_evidence_is_public_but_never_shows_contact_details():
+    with Harness(github=FakeGitHub()) as h:
+        _two_shifts(h)
+        h.client.patch("/api/me", json={"contact": "duy@example.com", "github_login": "duy-gh"}, headers=TEAM)
+        _rate(h)
+        _verify(h)
+        h.ok("deploy_fix", headers=MORNING)
+        h.client.post("/api/debrief", json={"incident_id": INC, "answer": EXAMPLE_ANSWER}, headers=RELAY)
+        response = h.client.get("/api/evidence/duy")
+        assert response.status_code == 200
+        record = response.json()["incidents"][0]
+        assert record["role"] == "night" and record["findings_shared"] == 1 and record["handoff_rating"] == 5
+        assert record["pr"]["ci"] == "success" and record["pr"]["mentor_reviewed"] is True
+        assert record["rubric"]["total"] == 20
+        assert "duy@example.com" not in response.text and "duy-gh" not in response.text
+        assert h.client.get("/api/evidence/tung").json()["incidents"][0]["role"] == "morning"
+        assert h.client.get("/api/evidence/nobody").status_code == 404
+
+
+def test_profiles_and_answers_survive_a_restart():
+    path, clock = _db_path(), FakeClock()
+    try:
+        with Harness(sqlite_path=path, clock=clock) as h:
+            _two_shifts(h)
+            h.client.patch("/api/me", json={"contact": "tung@example.com"}, headers=MORNING)
+            _connect(h, TEAM, "tung")
+            _connect(h, MORNING, "duy")
+        with Harness(sqlite_path=path, clock=clock) as h:
+            assert h.client.get("/api/network", headers=TEAM).json()["cards"][0]["contact"] == "tung@example.com"
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
 # ---------- starting incidents and teammates ----------
 
 def _start(h: Harness, teammates: list[str], headers: dict = TEAM, level: str = "practice"):
