@@ -10,13 +10,15 @@ import re
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
-from auth import Actor, require_member
+from accounts import HandleTaken
+from auth import RELAY_ACTOR, Actor, require_member, require_signed_in
 from engine.errors import conflict, invalid
 from engine.rubric import facts_rubric
 from engine.state import IncidentState
 from network import UNSET, NetworkStore
 
 from .deps import Runtime, get_runtime, translate_store_errors
+from .incidents import HANDLE_PATTERN
 
 GITHUB_LOGIN = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})")
 MAX_CONTACT_CHARS = 120
@@ -77,6 +79,27 @@ def patch_me(body: ProfilePatch, request: Request, actor: Actor = Depends(requir
         contact=body.contact if "contact" in sent else UNSET,
     )
     return _me(store, request, actor.handle)
+
+
+class ClaimHandle(BaseModel):
+    handle: str = Field(min_length=1, max_length=32)
+
+
+@router.post("/me/handle")
+def claim_handle(body: ClaimHandle, request: Request, actor: Actor = Depends(require_signed_in)) -> dict:
+    """Auth0 mode: pick your pseudonymous handle once. Demo mode handles come from DEMO_TEAM."""
+    if actor.internal or actor.auth_sub is None:
+        raise conflict("not_signed_in", "Sign in with Auth0 to pick a handle.")
+    if actor.handle:
+        raise conflict("handle_already_set", f"Your handle is already {actor.handle}.")
+    handle = body.handle.strip().lower()
+    if not HANDLE_PATTERN.fullmatch(handle) or handle == RELAY_ACTOR:
+        raise invalid("bad_handle", "Use 1-32 lowercase letters, digits, - or _. No real names needed.")
+    try:
+        request.app.state.accounts.claim(actor.auth_sub, handle)
+    except HandleTaken:
+        raise conflict("handle_taken", "That handle is taken. Try another.") from None
+    return _me(request.app.state.network, request, handle)
 
 
 # ---------- connections ----------

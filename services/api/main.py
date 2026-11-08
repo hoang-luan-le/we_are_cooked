@@ -20,6 +20,7 @@ from config import Settings
 from db import MEMORY, Database, open_database
 from engine.errors import ActionRejected
 from github_client import GitHubClient
+from accounts import AccountStore, Auth0Verifier
 from checks import CheckStore
 from network import NetworkStore
 from routes import after, cohorts, debrief, demo, handoff, incidents, network, panels, pr
@@ -88,6 +89,7 @@ def _github(settings: Settings, transport) -> GitHubClient | None:
 
 def create_app(
     settings: Settings | None = None, clock: Callable[[], float] = time.time, github_transport=None,
+    auth0_transport=None,
 ) -> FastAPI:
     """`clock` is wall-clock seconds: saved snapshots must still mean something after a restart."""
     resolved = settings or Settings.from_env()
@@ -100,6 +102,9 @@ def create_app(
         app.state.cohorts = CohortStore(db, clock)  # independent of the scenario
         app.state.network = NetworkStore(db, clock)
         app.state.checks = CheckStore(db, clock)
+        app.state.accounts = AccountStore(db, clock)
+        app.state.auth0 = (Auth0Verifier(resolved.auth0_domain, resolved.auth0_audience, auth0_transport)
+                           if resolved.auth0_domain else None)
         app.state.runtime, app.state.scenario_error = _start_runtime(resolved, clock, db)
         app.state.github = _github(resolved, github_transport)
         try:
@@ -108,6 +113,8 @@ def create_app(
             db.close()
             if app.state.github is not None:
                 app.state.github.close()
+            if app.state.auth0 is not None:
+                app.state.auth0.close()
 
     app = FastAPI(title="Incident Lab API", version="0.3.0", lifespan=lifespan)
     _add_cors(app, resolved)

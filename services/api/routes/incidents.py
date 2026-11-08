@@ -8,8 +8,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Request, status
 from pydantic import BaseModel, Field
 
-from auth import Actor, require_actor, require_member
-from config import Settings
+from auth import Actor, is_known_handle, require_actor, require_member
 from engine.actions import MAX_TEXT_CHARS, apply_action, request_hint
 from engine.errors import invalid
 from engine.state import ACTIONS, LEVELS
@@ -35,10 +34,10 @@ class StartRequest(BaseModel):
     teammates: list[str] = Field(default_factory=list, max_length=MAX_OTHER_TEAMMATES)
 
 
-def known_handles(settings: Settings, handles: list[str]) -> tuple[str, ...]:
-    """Normalize handles; refuse anyone the API doesn't know (demo mode: the demo team)."""
+def known_handles(request: Request, handles: list[str]) -> tuple[str, ...]:
+    """Normalize handles; refuse anyone the API doesn't know (demo team, or claimed handles with Auth0)."""
     cleaned = tuple(dict.fromkeys(h.strip().lower() for h in handles if h.strip()))
-    unknown = [h for h in cleaned if not HANDLE_PATTERN.fullmatch(h) or not settings.is_known_handle(h)]
+    unknown = [h for h in cleaned if not HANDLE_PATTERN.fullmatch(h) or not is_known_handle(request, h)]
     if unknown:
         raise invalid("unknown_handle", f"Unknown handle(s): {', '.join(unknown)}.")
     return cleaned
@@ -49,7 +48,7 @@ def start_incident(
     body: StartRequest, request: Request, actor: Actor = Depends(require_member), rt: Runtime = Depends(get_runtime),
 ) -> dict:
     """A new incident from the 2:04 page. The caller is always a teammate."""
-    others = known_handles(request.app.state.settings, body.teammates)
+    others = known_handles(request, body.teammates)
     incident_id = f"inc_{secrets.token_hex(4)}"
     state, now = rt.store.create(incident_id, body.level, (actor.handle, *others))
     return state_view(state, rt.scenario, now)

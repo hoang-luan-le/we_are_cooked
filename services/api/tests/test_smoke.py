@@ -11,6 +11,7 @@ import json
 import sqlite3
 import sys
 import tempfile
+import time
 from datetime import datetime, timezone
 import traceback
 from dataclasses import replace
@@ -24,6 +25,7 @@ import httpx  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 import adzuna  # noqa: E402
+import jwt  # noqa: E402
 from config import DEFAULT_DEMO_TEAM, DEFAULT_SCENARIO_PATH, Settings  # noqa: E402
 from engine.snapshot import from_snapshot, to_snapshot  # noqa: E402
 from engine.state import PullRequest  # noqa: E402
@@ -104,6 +106,33 @@ class FakeGitHub:
         return httpx.Response(404, json={"message": "Not Found"})
 
 
+AUTH0_DOMAIN = "incidentlab-test.example.auth0.com"
+AUTH0_AUDIENCE = "https://api.incidentlab.example"
+
+
+class FakeAuth0:
+    """An Auth0 tenant: serves its JWKS and signs RS256 access tokens with a throwaway key."""
+
+    def __init__(self):
+        from cryptography.hazmat.primitives.asymmetric import rsa
+
+        self.key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        self.jwks_fetches = 0
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
+        self.jwks_fetches += 1
+        jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(self.key.public_key()))
+        return httpx.Response(200, json={"keys": [{**jwk, "kid": "test-key", "use": "sig", "alg": "RS256"}]})
+
+    def token(self, sub: str, *, key=None, audience: str = AUTH0_AUDIENCE, issuer: str = f"https://{AUTH0_DOMAIN}/",
+              expires_in: int = 3600) -> dict:
+        now = int(time.time())
+        claims = {"sub": sub, "aud": audience, "iss": issuer, "iat": now, "exp": now + expires_in}
+        token = jwt.encode(claims, key or self.key, algorithm="RS256", headers={"kid": "test-key"})
+        return {"Authorization": f"Bearer {token}"}
+
+
 class Harness:
     """A running app with a fake clock and helpers for the common calls."""
 
@@ -112,14 +141,18 @@ class Harness:
     def __init__(self, scenario_path: Path = DEFAULT_SCENARIO_PATH, auth0_domain: str = "",
                  sqlite_path: str = ":memory:", database_url: str = "", clock: FakeClock | None = None,
                  demo_team: tuple[str, ...] = DEFAULT_DEMO_TEAM, github: "FakeGitHub | None" = None,
-                 jobs_path: Path | None = None) -> None:
+                 jobs_path: Path | None = None, auth0: "FakeAuth0 | None" = None) -> None:
         self.clock = clock or FakeClock()
+        if auth0 is not None:
+            auth0_domain = AUTH0_DOMAIN
         settings = Settings(scenario_path=scenario_path, internal_key=INTERNAL_KEY, auth0_domain=auth0_domain,
+                            auth0_audience=AUTH0_AUDIENCE,
                             sqlite_path=sqlite_path, database_url=database_url, demo_team=demo_team,
                             pilot_repos=(PILOT,) if github else (), mentor_github=("mentor-ana",),
                             jobs_snapshot_path=jobs_path or API_DIR / "tests" / "no-jobs-snapshot.json")
         transport = httpx.MockTransport(github.handle) if github else None
-        self.app = create_app(settings, clock=self.clock, github_transport=transport)
+        self.app = create_app(settings, clock=self.clock, github_transport=transport,
+                              auth0_transport=httpx.MockTransport(auth0.handle) if auth0 else None)
         self.client = TestClient(self.app)
 
     def __enter__(self) -> "Harness":
@@ -1004,6 +1037,60 @@ def test_before_after_check_shows_scores_only_at_the_end():
         outsider = h.client.post("/api/checks", headers=MORNING,
                                  json={"incident_id": incident_id, "stage": "before", "choice": "a"})
         assert outsider.json()["code"] == "not_teammate"
+
+
+# ---------- Auth0 sign-in ----------
+
+def test_auth0_users_claim_a_handle_then_work_normally():
+    tenant = FakeAuth0()
+    maya, sam = tenant.token("google-oauth2|111"), tenant.token("github|222")
+    with Harness(auth0=tenant) as h:
+        assert h.client.get("/api/me", headers=maya).json()["code"] == "handle_required"
+        claimed = h.client.post("/api/me/handle", json={"handle": "Maya-Demo"}, headers=maya)
+        assert claimed.status_code == 200 and claimed.json()["handle"] == "maya-demo"
+        assert h.client.get("/api/me", headers=maya).json()["handle"] == "maya-demo"
+        assert h.client.post("/api/me/handle", json={"handle": "maya-demo"}, headers=sam).json()["code"] == "handle_taken"
+        assert h.client.post("/api/me/handle", json={"handle": "x"}, headers=maya).json()["code"] == "handle_already_set"
+        assert h.client.post("/api/me/handle", json={"handle": "Real Name"}, headers=sam).json()["code"] == "bad_handle"
+        assert h.client.post("/api/me/handle", json={"handle": "dana-relay"}, headers=sam).json()["code"] == "bad_handle"
+        assert h.client.post("/api/me/handle", json={"handle": "sam"}, headers=RELAY).json()["code"] == "not_signed_in"
+        start = lambda team: h.client.post("/api/incident/start", json={"teammates": team}, headers=maya)  # noqa: E731
+        assert start(["sam"]).json()["code"] == "unknown_handle"   # sam hasn't claimed a handle yet
+        h.client.post("/api/me/handle", json={"handle": "sam"}, headers=sam)
+        incident = start(["sam"]).json()
+        assert incident["teammates"] == ["maya-demo", "sam"]
+        assert "google-oauth2" not in json.dumps(incident)  # the Auth0 subject is never shown
+        answer = {"action": "answer", "idempotency_key": "a1"}
+        assert h.client.post(f"/api/incident/{incident['incident_id']}/action", json=answer,
+                             headers=sam).status_code == 200
+
+
+def test_auth0_rejects_bad_tokens_and_the_demo_header():
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    tenant = FakeAuth0()
+    other_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    bad = [tenant.token("u", expires_in=-60), tenant.token("u", audience="https://other.example"),
+           tenant.token("u", issuer="https://evil.example/"), tenant.token("u", key=other_key),
+           {"Authorization": "Bearer not-a-jwt"}, {"Authorization": "Basic abc"}, {}, TEAM]
+    with Harness(auth0=tenant) as h:
+        for headers in bad:
+            assert h.client.get("/api/me", headers=headers).status_code == 401, headers
+        good = tenant.token("u")
+        h.client.get("/api/me", headers=good)
+        h.client.get("/api/me", headers=good)
+        assert tenant.jwks_fetches == 1  # signing keys are cached
+
+
+def test_auth0_handles_survive_a_restart():
+    tenant, path = FakeAuth0(), _db_path()
+    try:
+        with Harness(auth0=tenant, sqlite_path=path) as h:
+            h.client.post("/api/me/handle", json={"handle": "maya-demo"}, headers=tenant.token("google-oauth2|1"))
+        with Harness(auth0=tenant, sqlite_path=path) as h:
+            assert h.client.get("/api/me", headers=tenant.token("google-oauth2|1")).json()["handle"] == "maya-demo"
+    finally:
+        Path(path).unlink(missing_ok=True)
 
 
 # ---------- starting incidents and teammates ----------

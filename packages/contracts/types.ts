@@ -59,7 +59,8 @@ export type ErrorCode =
   | "handoff_not_ready" | "handoff_incomplete" | "handoff_rated" | "not_night_pair" | "night_pair_cannot_rate"
   | "no_handoff" | "not_teammate" | "unknown_handle" | "not_morning_pair"
   | "github_off" | "bad_pr_url" | "repo_not_allowed" | "github_unavailable"
-  | "not_participant" | "not_a_teammate" | "unknown_choice" | "check_closed" | "check_not_ready";
+  | "not_participant" | "not_a_teammate" | "unknown_choice" | "check_closed" | "check_not_ready"
+  | "handle_required" | "handle_taken" | "handle_already_set" | "bad_handle" | "not_signed_in";
 export interface ApiError { code: ErrorCode; detail: string }        // auth/404/validation errors have only `detail`
 
 // ---- rubric (0/2/4 each, out of 20) ----
@@ -241,3 +242,10 @@ export interface CheckView {
   before: CheckAnswer | null; after: CheckAnswer | null;
   improved: number | null;                 // after.score - before.score, once both are in
 }
+
+// ---- sign-in ----
+// Demo mode (AUTH0_DOMAIN empty): header X-Demo-User: <handle from DEMO_TEAM>.
+// Auth0 mode: header Authorization: Bearer <Auth0 access token for AUTH0_AUDIENCE>; X-Demo-User is refused (401).
+// First sign-in: every route answers 403 handle_required until POST /api/me/handle -> Me.
+// Handles are pseudonymous: 1-32 of [a-z0-9_-]. The Auth0 account id is never shown to anyone.
+export interface ClaimHandleRequest { handle: string }  // 409 handle_taken | handle_already_set, 422 bad_handle

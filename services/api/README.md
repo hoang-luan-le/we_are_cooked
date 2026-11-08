@@ -22,7 +22,7 @@ python tests/test_smoke.py                 # must print ALL GOOD before you push
 | Path | What |
 |---|---|
 | `main.py` | App factory, `/health`, mounts routes + Dana's voice router |
-| `config.py` / `auth.py` | Settings from the root `.env`; `X-Internal-Key` / `X-Demo-User` |
+| `config.py` / `auth.py` / `accounts.py` | Settings from the root `.env`; `X-Internal-Key`, `X-Demo-User` (demo) or Auth0 bearer tokens + handle claim |
 | `scenario_loader.py` / `scenario_models.py` | Loads + validates `scenario/scenario.json`; splits off `answer_key` |
 | `engine/` | Pure functions over frozen state: actions, metrics, help ladder + nudge, rubric, response views |
 | `store.py` | Live incidents in memory, a snapshot saved after every change; idempotency keys |
@@ -37,4 +37,4 @@ python tests/test_smoke.py                 # must print ALL GOOD before you push
 Contract: `packages/contracts/types.ts` and `dana-voice.md` §5.
 
 ## Not built yet
-Pilot repo on GitHub (contents ready in `D:shopnorth-checkout`), Auth0 tokens, Tiger Data (Postgres) + metrics history, open-source issues (P1).
+Pilot repo on GitHub (contents ready in `D:shopnorth-checkout`), Tiger Data (Postgres) + metrics history, open-source issues (P1).

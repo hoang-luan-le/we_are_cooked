@@ -24,6 +24,7 @@ class Settings:
     internal_key: str = ""          # shared secret for server-to-server calls (Dana relay)
     demo_team: tuple[str, ...] = DEFAULT_DEMO_TEAM
     auth0_domain: str = ""
+    auth0_audience: str = ""             # the API identifier configured in Auth0
     cors_origins: tuple[str, ...] = ()   # empty = every origin (dev only)
     database_url: str = ""               # empty = local SQLite at sqlite_path
     sqlite_path: str = ":memory:"        # from_env() uses DEFAULT_SQLITE_PATH; tests keep memory
@@ -47,6 +48,7 @@ class Settings:
             internal_key=os.environ.get("INTERNAL_KEY", "").strip(),
             demo_team=team or DEFAULT_DEMO_TEAM,
             auth0_domain=os.environ.get("AUTH0_DOMAIN", "").strip(),
+            auth0_audience=os.environ.get("AUTH0_AUDIENCE", "").strip(),
             cors_origins=_origins(os.environ.get("CORS_ORIGINS", "")),
             database_url=os.environ.get("DATABASE_URL", "").strip(),
             sqlite_path=os.environ.get("SQLITE_PATH", "").strip() or str(DEFAULT_SQLITE_PATH),
@@ -56,10 +58,6 @@ class Settings:
             jobs_snapshot_path=Path(os.environ.get("JOBS_SNAPSHOT_PATH", "").strip()
                                     or API_DIR / "data" / "jobs_snapshot.json"),
         )
-
-    def is_known_handle(self, handle: str) -> bool:
-        """Demo mode only knows the demo team. With Auth0 there's no users table yet, so accept."""
-        return handle in self.demo_team if self.demo_mode else bool(handle)
 
 
 def _origins(raw: str) -> tuple[str, ...]:
