@@ -1,8 +1,8 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type WebSocketRoute } from "@playwright/test";
 
-async function answerDana(page: Page) {
+async function answerDana(page: Page, mode: "text" | "voice") {
   await page.goto("/night");
-  await page.getByRole("button", { name: "Answer Dana" }).click();
+  await page.getByRole("button", { name: mode === "voice" ? "Answer Dana with voice" : "Answer Dana by text" }).click();
   await expect(page.getByRole("heading", { name: "Dana’s briefing" })).toBeFocused();
 }
 
@@ -13,6 +13,8 @@ test("walks from the landing through diagnosis and simulated recovery", async ({
   page.on("websocket", () => socketCount++);
   await page.goto("/");
   await page.getByRole("link", { name: "Start Night 2D" }).click();
+  await expect(page).toHaveURL(/\/night$/);
+  await page.goto("/night?fixture=1");
   await expect(page.getByText("Development fixture", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Answer Dana" }).focus();
   await page.keyboard.press("Enter");
@@ -61,7 +63,7 @@ test.describe("mobile", () => {
 
   test("snoozes and keeps the dashboard usable at narrow widths", async ({ page }) => {
     await page.clock.install();
-    await page.goto("/night");
+    await page.goto("/night?fixture=1");
     const snooze = page.getByRole("button", { name: "Snooze" });
     await snooze.tap();
     await expect(page.getByRole("status")).toContainText("Page snoozed");
@@ -75,26 +77,46 @@ test.describe("mobile", () => {
   });
 });
 
-test("speaks the shared text relay protocol and closes when leaving the call", async ({ page }) => {
+test("answers by text in one click, follows captions and reports engine changes", async ({ page }) => {
+  await page.addInitScript(() => {
+    navigator.mediaDevices.getUserMedia = async () => {
+      document.documentElement.dataset.micRequested = "yes";
+      throw new Error("Text must not request audio");
+    };
+  });
   const sent: string[] = [];
   const requests: URLSearchParams[] = [];
+  const relays: WebSocketRoute[] = [];
   await page.routeWebSocket("**/ws/voice?*", relay => {
+    relays.push(relay);
     requests.push(new URL(relay.url()).searchParams);
-    relay.send(JSON.stringify({ type: "ready", call: "briefing", mode: "text" }));
+    relay.send(JSON.stringify({ type: "ready", call: "briefing", mode: "text", engine: "deepgram" }));
     relay.send(JSON.stringify({ type: "caption", role: "dana", text: "Test relay briefing" }));
     relay.onMessage(message => { if (typeof message === "string") sent.push(message); });
   });
-  await answerDana(page);
-  await page.getByRole("button", { name: "Use relay text" }).click();
+  await answerDana(page, "text");
   await expect(page.getByRole("log")).toContainText("Test relay briefing");
+  await expect(page.getByRole("status")).toContainText("text · Deepgram");
+  await expect(page.locator("html")).not.toHaveAttribute("data-mic-requested", "yes");
   expect(Object.fromEntries(requests[0])).toEqual({
     call: "briefing", incident_id: "inc_demo", user: "dev", level: "explore", mode: "text",
   });
   await page.getByRole("textbox", { name: "Message Dana" }).fill("What changed?");
   await page.getByRole("button", { name: "Send" }).click();
   await expect.poll(() => sent.map(message => JSON.parse(message))).toContainEqual({ type: "text", text: "What changed?" });
-  await page.getByRole("button", { name: "Continue to dashboard" }).click();
-  await expect.poll(() => sent.map(message => JSON.parse(message))).toContainEqual({ type: "hang_up" });
+  const [relay] = relays;
+  relay.send(JSON.stringify({ type: "ready", call: "briefing", mode: "text", engine: "scripted" }));
+  for (let number = 1; number <= 20; number++) {
+    relay.send(JSON.stringify({ type: "caption", role: "dana", text: `Caption ${number}` }));
+  }
+  await expect(page.getByRole("status")).toContainText("text · Scripted (no AI)");
+  await expect(page.getByRole("log").getByText("Caption 20")).toBeInViewport();
+  await expect(page.getByRole("log")).toContainText("Test relay briefing");
+  expect(requests).toHaveLength(1);
+  relay.send(JSON.stringify({ type: "caption", role: "dana", text: "Dana’s final text" }));
+  relay.send(JSON.stringify({ type: "call_ended", reason: "done" }));
+  await expect(page.getByRole("heading", { name: "Checkout incident" })).toBeFocused();
+  await expect(page.getByText("Dana’s final text")).toBeVisible();
 });
 
 test("falls back on microphone denial and stays usable when the relay fails", async ({ page }) => {
@@ -106,21 +128,45 @@ test("falls back on microphone denial and stays usable when the relay fails", as
     modes.push(new URL(relay.url()).searchParams.get("mode") ?? "");
     relay.send(JSON.stringify({ type: "error", code: "offline", message: "Test relay unavailable", fallback: "none" }));
   });
-  await answerDana(page);
-  await page.getByRole("button", { name: "Use relay voice" }).click();
+  await answerDana(page, "voice");
   await expect(page.getByRole("status")).toContainText("text · failed");
   expect(modes).toEqual(["text"]);
   await expect(page.getByRole("region", { name: "Dana’s briefing" }).getByRole("alert")).toContainText("connection error");
-  await page.getByRole("button", { name: "Use scripted briefing" }).click();
+  await page.getByRole("button", { name: "Use offline briefing" }).click();
+  await expect(page.getByRole("status")).toContainText("Offline briefing");
   await expect(page.getByRole("log")).toContainText("Checkout is failing");
   await page.getByRole("button", { name: "Continue to dashboard" }).click();
   await expect(page.getByRole("heading", { name: "Checkout incident" })).toBeVisible();
 });
 
-test("sends 100 ms PCM16 mic frames and releases the fake mic on exit", async ({ page }) => {
+async function installSyntheticMic(page: Page) {
   await page.addInitScript(() => {
+    const NativeAudio = AudioContext;
+    window.AudioContext = class extends NativeAudio {
+      constructor() {
+        super();
+        const showState = () => { document.documentElement.dataset.audioState = this.state; };
+        this.addEventListener("statechange", showState);
+        window.addEventListener("test:suspend-audio", () => { void this.suspend(); });
+      }
+    };
+    const starts: { when: number; rate: number }[] = [];
+    const start = AudioBufferSourceNode.prototype.start;
+    const stopSource = AudioBufferSourceNode.prototype.stop;
+    AudioBufferSourceNode.prototype.start = function (...args: Parameters<typeof start>) {
+      if (this.buffer) {
+        starts.push({ when: args[0] ?? 0, rate: this.buffer.sampleRate });
+        document.documentElement.dataset.audioStarts = JSON.stringify(starts);
+      }
+      start.apply(this, args);
+    };
+    AudioBufferSourceNode.prototype.stop = function (when) {
+      const root = document.documentElement;
+      root.dataset.audioStops = String(Number(root.dataset.audioStops ?? "0") + 1);
+      stopSource.call(this, when);
+    };
     navigator.mediaDevices.getUserMedia = async () => {
-      const generator = new AudioContext();
+      const generator = new NativeAudio();
       const tone = generator.createOscillator();
       const output = generator.createMediaStreamDestination();
       tone.connect(output);
@@ -137,26 +183,82 @@ test("sends 100 ms PCM16 mic frames and releases the fake mic on exit", async ({
       return output.stream;
     };
   });
+}
+
+test("keeps PCM in order, interrupts speech and text, and drains before advancing", async ({ page }) => {
+  await installSyntheticMic(page);
+  const root = page.locator("html");
   const frameSizes: number[] = [];
   const events: string[] = [];
-  const modes: string[] = [];
+  const relays: WebSocketRoute[] = [];
   await page.routeWebSocket("**/ws/voice?*", relay => {
-    modes.push(new URL(relay.url()).searchParams.get("mode") ?? "");
-    relay.send(JSON.stringify({ type: "ready", call: "briefing", mode: "voice" }));
+    relays.push(relay);
+    relay.send(JSON.stringify({ type: "ready", call: "briefing", mode: "voice", engine: "deepgram" }));
     relay.send(JSON.stringify({ type: "caption", role: "dana", text: "Test voice caption" }));
-    relay.send(Buffer.alloc(4800));
     relay.onMessage(message => {
       if (typeof message === "string") events.push(message);
       else frameSizes.push(message.length);
     });
   });
-  await answerDana(page);
-  await page.getByRole("button", { name: "Use relay voice" }).click();
+  await answerDana(page, "voice");
   await expect(page.getByRole("log")).toContainText("Test voice caption");
-  expect(modes).toEqual(["voice"]);
+  const [relay] = relays;
+  expect(new URL(relay.url()).searchParams.get("mode")).toBe("voice");
   await expect.poll(() => frameSizes).toContain(3200);
   await page.getByRole("button", { name: "Mute mic" }).click();
   await expect.poll(() => events.map(message => JSON.parse(message))).toContainEqual({ type: "mute", on: true });
-  await page.getByRole("button", { name: "Continue to dashboard" }).click();
+  relay.send(Buffer.alloc(48_000));
+  relay.send(Buffer.alloc(48_000));
+  const scheduled = async (): Promise<{ when: number; rate: number }[]> =>
+    JSON.parse(await root.getAttribute("data-audio-starts") ?? "[]");
+  await expect.poll(async () => (await scheduled()).length).toBe(2);
+  const [first, second] = await scheduled();
+  expect([first.rate, second.rate]).toEqual([24_000, 24_000]);
+  expect(second.when - first.when).toBeCloseTo(1, 5);
+  await page.getByRole("textbox", { name: "Message Dana" }).fill("Please pause");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(root).toHaveAttribute("data-audio-stops", "2");
+  relay.send(Buffer.alloc(48_000));
+  relay.send(Buffer.alloc(48_000));
+  await expect.poll(async () => (await scheduled()).length).toBe(4);
+  relay.send(JSON.stringify({ type: "user_started_speaking" }));
+  await expect(root).toHaveAttribute("data-audio-stops", "4");
+  await page.evaluate(() => window.dispatchEvent(new Event("test:suspend-audio")));
+  await expect(root).toHaveAttribute("data-audio-state", "suspended");
+  relay.send(Buffer.alloc(24_000));
+  relay.send(JSON.stringify({ type: "caption", role: "dana", text: "Final voice caption" }));
+  relay.send(JSON.stringify({ type: "call_ended", reason: "done" }));
+  await expect(page.getByRole("status")).toContainText("draining");
+  await expect(root).toHaveAttribute("data-mic-stopped", "yes");
+  await expect(page.getByRole("button", { name: "Continue to dashboard" })).toBeDisabled();
+  // The final half-second buffer must survive past its nominal duration while suspended.
+  await page.waitForTimeout(750);
+  await expect(root).toHaveAttribute("data-audio-stops", "4");
+  await page.getByRole("button", { name: "Resume audio" }).click();
+  await expect(page.getByRole("heading", { name: "Checkout incident" })).toBeFocused();
+  await expect(page.getByText("Final voice caption")).toBeVisible();
+  await expect(root).toHaveAttribute("data-audio-state", "closed");
+  await expect(root).toHaveAttribute("data-audio-stops", "4");
+});
+
+test("preserves the briefing and draft on a server-requested text fallback", async ({ page }) => {
+  await installSyntheticMic(page);
+  const relays: WebSocketRoute[] = [];
+  await page.routeWebSocket("**/ws/voice?*", relay => {
+    relays.push(relay);
+    const voice = new URL(relay.url()).searchParams.get("mode") === "voice";
+    relay.send(JSON.stringify({ type: "ready", call: "briefing", mode: voice ? "voice" : "text", engine: voice ? "deepgram" : "scripted" }));
+    relay.send(JSON.stringify({ type: "caption", role: "dana", text: voice ? "Voice caption" : "Text continued" }));
+  });
+  await answerDana(page, "voice");
+  await expect(page.getByRole("log")).toContainText("Voice caption");
+  const draft = page.getByRole("textbox", { name: "Message Dana" });
+  await draft.fill("Unsent question");
+  relays[0].send(JSON.stringify({ type: "error", code: "voice_unavailable", message: "Voice dropped", fallback: "text" }));
+  await expect(page.getByRole("status")).toContainText("text · Scripted (no AI)");
+  await expect(page.getByRole("log")).toContainText("Voice caption");
+  await expect(page.getByRole("log")).toContainText("Text continued");
+  await expect(draft).toHaveValue("Unsent question");
   await expect(page.locator("html")).toHaveAttribute("data-mic-stopped", "yes");
+  expect(relays).toHaveLength(2);
 });

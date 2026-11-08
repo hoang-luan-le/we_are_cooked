@@ -5,29 +5,44 @@ import {
 
 export type DanaConnection = {
   close: () => void;
+  isDraining: () => boolean;
+  resumePlayback: () => void;
   send: (message: DanaClientMsg) => boolean;
 };
 
-type Options = {
+export type DanaTarget = {
   base: string;
   mode: DanaMode;
+  audio?: AudioContext;
   session?: { incidentId: string; user: string; level: Level };
+};
+
+type Options = DanaTarget & {
   onEvent: (event: DanaServerMsg) => void;
+  onDrain: () => void;
   onFailure: (message: string, allowText: boolean) => void;
 };
 
+export function prepareDanaAudio() {
+  try {
+    const audio = new AudioContext();
+    void audio.resume().catch(() => {});
+    return audio;
+  } catch {
+    return undefined;
+  }
+}
+
 // Adapted from services/api/voice/dev_page.html, with one lifecycle per call.
-export function connectDana({ base, mode, session, onEvent, onFailure }: Options): DanaConnection {
+export function connectDana({ base, mode, audio, session, onEvent, onDrain, onFailure }: Options): DanaConnection {
   let socket: WebSocket | undefined;
-  let audio: AudioContext | undefined;
   let mic: MediaStream | undefined;
   let capture: AudioWorkletNode | undefined;
   let closed = false;
   let ready = false;
   let muted = false;
-  let draining = false;
+  let ended: Extract<DanaServerMsg, { type: "call_ended" }> | undefined;
   let playHead = 0;
-  let drainTimer: number | undefined;
   const sources = new Set<AudioBufferSourceNode>();
 
   const connectionTimer = window.setTimeout(() => {
@@ -54,7 +69,6 @@ export function connectDana({ base, mode, session, onEvent, onFailure }: Options
     if (closed) return;
     closed = true;
     window.clearTimeout(connectionTimer);
-    window.clearTimeout(drainTimer);
     stopMic();
     stopPlayback();
     if (audio && audio.state !== "closed") void audio.close();
@@ -62,16 +76,23 @@ export function connectDana({ base, mode, session, onEvent, onFailure }: Options
   }
 
   function fail(message: string, allowText: boolean) {
-    if (closed || draining) return;
+    if (closed || ended) return;
     release();
     onFailure(message, allowText);
   }
 
   function send(message: DanaClientMsg) {
-    if (!ready || closed || draining || socket?.readyState !== WebSocket.OPEN) return false;
+    if (!ready || closed || ended || socket?.readyState !== WebSocket.OPEN) return false;
     if (message.type === "mute") muted = message.on;
+    if (mode === "voice" && message.type === "text") stopPlayback();
     socket.send(JSON.stringify(message));
     return true;
+  }
+
+  function finishDrain() {
+    if (!ended || closed || sources.size) return;
+    release();
+    onEvent(ended);
   }
 
   function playChunk(data: ArrayBuffer) {
@@ -89,7 +110,10 @@ export function connectDana({ base, mode, session, onEvent, onFailure }: Options
     source.start(playHead);
     playHead += buffer.duration;
     sources.add(source);
-    source.onended = () => sources.delete(source);
+    source.onended = () => {
+      sources.delete(source);
+      finishDrain();
+    };
   }
 
   function startCapture() {
@@ -99,7 +123,7 @@ export function connectDana({ base, mode, session, onEvent, onFailure }: Options
     });
     capture.onprocessorerror = () => fail("Microphone capture stopped.", true);
     capture.port.onmessage = ({ data }: MessageEvent<ArrayBuffer>) => {
-      if (!closed && !draining && !muted && socket?.readyState === WebSocket.OPEN && socket.bufferedAmount < 256_000) {
+      if (!closed && !ended && !muted && socket?.readyState === WebSocket.OPEN && socket.bufferedAmount < 256_000) {
         socket.send(data);
       }
     };
@@ -110,10 +134,12 @@ export function connectDana({ base, mode, session, onEvent, onFailure }: Options
     if (!ready && event.type !== "ready" && event.type !== "error" && event.type !== "call_ended") return;
     switch (event.type) {
       case "ready":
-        if (ready || event.call !== "briefing" || event.mode !== mode) return;
-        ready = true;
-        window.clearTimeout(connectionTimer);
-        startCapture();
+        if (event.call !== "briefing" || event.mode !== mode) return;
+        if (!ready) {
+          ready = true;
+          window.clearTimeout(connectionTimer);
+          startCapture();
+        }
         break;
       case "caption":
         if (typeof event.text !== "string" || !["dana", "you"].includes(event.role)) return;
@@ -132,13 +158,11 @@ export function connectDana({ base, mode, session, onEvent, onFailure }: Options
           fail("Dana’s relay ended unexpectedly.", true);
           return;
         }
-        draining = true;
+        ended = event;
+        window.clearTimeout(connectionTimer);
         stopMic();
-        const drainMs = audio ? Math.max(0, playHead - audio.currentTime) * 1000 : 0;
-        drainTimer = window.setTimeout(() => {
-          release();
-          onEvent(event);
-        }, drainMs);
+        onDrain();
+        finishDrain();
         return;
       }
       case "dana_done_speaking":
@@ -151,9 +175,10 @@ export function connectDana({ base, mode, session, onEvent, onFailure }: Options
   }
 
   async function open() {
+    if (closed) return;
     if (mode === "voice") {
       try {
-        audio = new AudioContext();
+        if (!audio) throw new Error("Audio unavailable");
         await audio.resume();
         if (closed) return;
         const input = await navigator.mediaDevices.getUserMedia({
@@ -175,7 +200,7 @@ export function connectDana({ base, mode, session, onEvent, onFailure }: Options
     socket = new WebSocket(danaUrl(base, { call: "briefing", mode, ...identity }));
     socket.binaryType = "arraybuffer";
     socket.onmessage = ({ data }: MessageEvent<string | ArrayBuffer>) => {
-      if (closed || draining) return;
+      if (closed || ended) return;
       try {
         if (typeof data === "string") handleEvent(JSON.parse(data));
         else if (ready && mode === "voice" && data instanceof ArrayBuffer) playChunk(data);
@@ -186,12 +211,16 @@ export function connectDana({ base, mode, session, onEvent, onFailure }: Options
     socket.onclose = socket.onerror = () => fail("Dana’s relay disconnected.", true);
   }
 
-  void open().catch(() => fail("Dana’s relay could not connect.", true));
+  queueMicrotask(() => void open().catch(() => fail("Dana’s relay could not connect.", true)));
 
   return {
     close: () => {
       send({ type: "hang_up" });
       release();
+    },
+    isDraining: () => Boolean(ended && !closed),
+    resumePlayback: () => {
+      if (audio?.state === "suspended" || audio?.state === "interrupted") void audio.resume().catch(() => {});
     },
     send,
   };

@@ -12,6 +12,7 @@ ws(s)://<API>/ws/voice?call=<briefing|help|debrief>&incident_id=<id>&user=<handl
 
 - One WebSocket per call. The browser never talks to Deepgram or Gemini directly; keys stay on the server.
 - `mode=text` is the **text fallback**: same socket and same messages, but no audio. Frontend switches to it if the mic is denied or voice fails.
+  The server picks the engine: typed chat through Deepgram, or, if Deepgram is down, **scripted Dana** (no AI: lines come from `/facts`, `/hint` and `/api/debrief`). `ready.engine` says which. No Gemini key is needed anywhere.
 - The server reads `level` and `incident_id` and loads Dana's prompt + tools. Frontend does nothing else to set her up.
 
 ## 2. Audio (voice mode only)
@@ -27,7 +28,7 @@ Working reference client: `services/api/voice/dev_page.html` (mic worklet, gaple
 
 | `type` | Fields | Frontend does |
 |---|---|---|
-| `ready` | `call`, `mode` | Show "Dana connected", start the mic |
+| `ready` | `call`, `mode`, `engine` (`deepgram` \| `scripted`) | Show "Dana connected", start the mic (voice mode) |
 | `caption` | `role` (`dana` \| `you`), `text` | Append to the captions panel. **Always shown** (accessibility) |
 | `status` | `state` (`listening` \| `thinking` \| `speaking`) | Small indicator next to Dana |
 | `user_started_speaking` | — | **Stop Dana's audio right away** (user interrupted her) |

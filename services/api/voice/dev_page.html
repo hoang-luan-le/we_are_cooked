@@ -85,7 +85,7 @@ function stopPlayback() { sources.forEach((s) => { try { s.stop(); } catch {} })
 
 function onMsg(m) {
   switch (m.type) {
-    case "ready": add("sys", `Connected (${m.call}, ${m.mode})`); break;
+    case "ready": add("sys", `Connected (${m.call}, ${m.mode}${m.engine === "scripted" ? ", scripted: no AI" : ""})`); break;
     case "caption": add(m.role, m.text); break;
     case "status": status(`Dana is <b>${m.state}</b>`); break;
     case "user_started_speaking": stopPlayback(); break;

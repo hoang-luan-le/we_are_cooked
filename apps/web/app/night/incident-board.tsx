@@ -107,10 +107,11 @@ function LockedPanel({ title, id, pending, onOpen }: {
   );
 }
 
-export function IncidentBoard({ heading, snapshot, pending, onAction }: {
+export function IncidentBoard({ heading, snapshot, pending, finalCaption, onAction }: {
   heading: RefObject<HTMLHeadingElement | null>;
   snapshot?: NightSnapshot;
   pending: boolean;
+  finalCaption?: string;
   onAction: (intent: NightAction) => Promise<boolean>;
 }) {
   const [step, setStep] = useState<number | null>(null);
@@ -147,6 +148,7 @@ export function IncidentBoard({ heading, snapshot, pending, onAction }: {
         <p className="eyebrow">Night 2D · ShopNorth</p>
         <h1 ref={heading} tabIndex={-1}>Checkout incident</h1>
         <p>Compare the checkout errors and deploy timing to decide which release to roll back.</p>
+        {finalCaption ? <p><strong>Dana</strong> {finalCaption}</p> : null}
       </section>
       <div className="board-grid">
         {incident && !incident.unlocked.includes("dashboard") ? (

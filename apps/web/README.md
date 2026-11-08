@@ -12,7 +12,7 @@ npm run dev
 
 Open [localhost:3000](http://localhost:3000) and select **Start Night 2D**. The fixture is enabled in development. To preview the built fixture, run `npm run build` and `NIGHT_FIXTURES=1 npm start`. In PowerShell, set `$env:NIGHT_FIXTURES = "1"` before starting.
 
-The scripted briefing works offline. To try the optional Dana development relay, follow the [relay instructions](../../services/api/voice/README.md) and set `DANA_DEV_WS_BASE` to its WebSocket origin, such as `ws://localhost:8001`, before starting Next.js. Select **Use relay voice** or **Use relay text** in the briefing. The relay uses the existing development incident and user. The checkout dashboard still uses the local fixture.
+The offline briefing works without a relay. To try the optional Dana development relay, follow the [relay instructions](../../services/api/voice/README.md) and set `DANA_DEV_WS_BASE` to its WebSocket origin, such as `ws://localhost:8001`, before starting Next.js. Choose **Answer Dana by text** or **Answer Dana with voice** on the incoming call. The briefing labels the relay engine as Deepgram or scripted. If voice fails, the same briefing continues in relay text. Open `/night?fixture=1` to explicitly run the offline fixture.
 
 ## Connect the local demo API
 

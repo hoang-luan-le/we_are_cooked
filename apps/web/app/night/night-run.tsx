@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
-import { DanaBriefing } from "./dana-briefing";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
+import type { DanaMode } from "../../../../packages/contracts/dana";
+import { DanaBriefing, useDanaBriefing } from "./dana-briefing";
+import { prepareDanaAudio } from "./dana-connection";
 import { IncidentBoard } from "./incident-board";
 import { type NightAction, useNightApi } from "./use-night-api";
 
@@ -10,6 +12,9 @@ export function NightRun({ apiUser, relayBase }: { apiUser?: string; relayBase?:
   const [stage, setStage] = useState<"page" | "briefing" | "board">("page");
   const [snoozed, setSnoozed] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
+  const answerMode = useRef<DanaMode | "fixture">(relayBase ? "text" : "fixture");
+  const briefing = useDanaBriefing();
+  const closeBriefing = briefing.close;
   const api = useNightApi(Boolean(apiUser));
   const incident = api.snapshot?.incident;
   const visibleStage = incident
@@ -26,12 +31,51 @@ export function NightRun({ apiUser, relayBase }: { apiUser?: string; relayBase?:
     return () => window.clearTimeout(timer);
   }, [visibleStage, snoozed]);
 
-  async function perform(intent: NightAction) {
-    if (apiUser && !await api.act(intent)) return false;
-    if (intent.action === "answer") setStage("briefing");
+  async function perform(intent: NightAction, mode = answerMode.current) {
+    if (api.pending) return false;
+    const answering = intent.action === "answer";
+    if (answering) answerMode.current = mode;
+    // Unlock audio on the voice click. Mic capture and the socket wait for Answer acceptance.
+    const audio = answering && mode === "voice" && relayBase ? prepareDanaAudio() : undefined;
+    if (apiUser && !await api.act(intent)) {
+      if (audio && audio.state !== "closed") void audio.close();
+      return false;
+    }
+    if (answering) {
+      setStage("briefing");
+      if (mode === "fixture" || !relayBase) briefing.useFixture();
+      else briefing.startRelay({
+        base: relayBase,
+        mode,
+        audio,
+        session: apiUser && incident ? { incidentId: incident.incident_id, level: incident.level, user: apiUser } : undefined,
+      });
+    }
     if (intent.action === "snooze") setSnoozed(true);
     return true;
   }
+
+  function openDashboard() {
+    if (briefing.isDraining()) return;
+    closeBriefing();
+    if (!api.readError && incident?.allowed_actions.includes("open_panel") && !incident.unlocked.includes("dashboard")) {
+      void perform({ action: "open_panel", panel: "dashboard" });
+    }
+    setStage("board");
+  }
+
+  const finishBriefing = useEffectEvent(openDashboard);
+
+  useEffect(() => {
+    if (visibleStage === "briefing" && briefing.state === "ended") finishBriefing();
+  }, [visibleStage, briefing.state]);
+
+  useEffect(() => {
+    if (visibleStage === "briefing") return closeBriefing;
+  }, [visibleStage, closeBriefing]);
+
+  const answerDisabled = api.pending || api.readError || (incident && !incident.allowed_actions.includes("answer"));
+  const finalCaption = briefing.state === "ended" ? briefing.captions.findLast(caption => caption.role === "dana")?.text : undefined;
 
   return (
     <>
@@ -61,23 +105,21 @@ export function NightRun({ apiUser, relayBase }: { apiUser?: string; relayBase?:
             <h1 id="page-title">Dana is calling.</h1>
             <p role="status">{snoozed ? "Page snoozed. Dana will ring again shortly." : "Checkout error rate is above the alert threshold."}</p>
             <div className="actions">
-              <button className="primary" disabled={api.pending || api.readError || (incident && !incident.allowed_actions.includes("answer"))}
-                onClick={() => void perform({ action: "answer" })}>Answer Dana</button>
+              <button className="primary" disabled={answerDisabled}
+                onClick={() => void perform({ action: "answer" }, relayBase ? "text" : "fixture")}>
+                {relayBase ? "Answer Dana by text" : "Answer Dana"}
+              </button>
+              {relayBase ? <button disabled={answerDisabled}
+                onClick={() => void perform({ action: "answer" }, "voice")}>Answer Dana with voice</button> : null}
               <button disabled={snoozed || api.pending || api.readError || (incident && !incident.allowed_actions.includes("snooze"))}
                 onClick={() => void perform({ action: "snooze" })}>Snooze</button>
             </div>
           </section>
         ) : visibleStage === "briefing" ? (
-          <DanaBriefing heading={heading} relayBase={relayBase}
-            session={apiUser && incident ? { incidentId: incident.incident_id, level: incident.level, user: apiUser } : undefined}
-            onContinue={() => {
-              if (!api.readError && incident?.allowed_actions.includes("open_panel") && !incident.unlocked.includes("dashboard")) {
-                void perform({ action: "open_panel", panel: "dashboard" });
-              }
-              setStage("board");
-            }} />
+          <DanaBriefing heading={heading} briefing={briefing} onContinue={openDashboard} />
         ) : (
-          <IncidentBoard heading={heading} snapshot={api.snapshot} pending={api.pending || api.readError} onAction={perform} />
+          <IncidentBoard heading={heading} snapshot={api.snapshot} pending={api.pending || api.readError}
+            finalCaption={finalCaption} onAction={perform} />
         )}
       </main>
     </>

@@ -28,7 +28,8 @@ export default async function NightPage({ searchParams }: { searchParams: Promis
     );
   }
 
-  const config = (await searchParams).fixture === "1" ? undefined : demoApi();
-  const relayBase = devRelayBase() ?? config?.origin.replace(/^http:/, "ws:");
+  const offline = (await searchParams).fixture === "1";
+  const config = offline ? undefined : demoApi();
+  const relayBase = offline ? undefined : devRelayBase() ?? config?.origin.replace(/^http:/, "ws:");
   return <NightRun key={config ? "api" : "fixture"} apiUser={config?.user} relayBase={relayBase} />;
 }

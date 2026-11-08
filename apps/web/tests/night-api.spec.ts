@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type WebSocketRoute } from "@playwright/test";
 import type { ActionRequest, IncidentState } from "../../../packages/contracts/types";
 
 const api = process.env.NIGHT_TEST_API_ORIGIN;
@@ -8,8 +8,25 @@ test("uses the demo API for Answer, diagnosis, rollback, recovery and refresh", 
   const reset = await request.post(`${api}/api/demo/reset`, { headers: { "X-Demo-User": "demo-a" }, data: { level: "explore" } });
   expect(reset.ok()).toBe(true);
   const rollbackKeys: string[] = [];
+  const briefingSockets: WebSocketRoute[] = [];
+  let answerAccepted = false;
+  await page.routeWebSocket("**/ws/voice?*", relay => {
+    expect(answerAccepted).toBe(true);
+    expect(new URL(relay.url()).searchParams.get("user")).toBe("demo-a");
+    briefingSockets.push(relay);
+    relay.send(JSON.stringify({ type: "ready", call: "briefing", mode: "text", engine: "scripted" }));
+    relay.send(JSON.stringify({ type: "caption", role: "dana", text: "Inspect checkout, then roll back safely." }));
+  });
   await page.route("**/api/night", async route => {
     const action: ActionRequest | null = route.request().postDataJSON();
+    if (action?.action === "answer") {
+      const accepted = await route.fetch();
+      expect(accepted.ok()).toBe(true);
+      expect(briefingSockets).toHaveLength(0);
+      answerAccepted = true;
+      await route.fulfill({ response: accepted });
+      return;
+    }
     if (action?.action !== "rollback") {
       await route.continue();
       return;
@@ -25,9 +42,12 @@ test("uses the demo API for Answer, diagnosis, rollback, recovery and refresh", 
 
   await page.goto("/night");
   await expect(page.getByText("Local demo API", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Answer Dana" }).click();
+  await page.getByRole("button", { name: "Answer Dana by text" }).click();
   await expect(page.getByRole("heading", { name: "Dana’s briefing" })).toBeVisible();
-  await page.getByRole("button", { name: "Continue to dashboard" }).click();
+  await expect(page.getByRole("log")).toContainText("Inspect checkout, then roll back safely.");
+  expect(briefingSockets).toHaveLength(1);
+  briefingSockets[0].send(JSON.stringify({ type: "call_ended", reason: "done" }));
+  await expect(page.getByRole("heading", { name: "Checkout incident" })).toBeFocused();
   await expect(page.getByText("API simulation clock")).toBeVisible();
   await page.getByRole("button", { name: "Open checkout logs" }).click();
   await expect(page.getByText("Scenario log samples")).toBeVisible();
