@@ -14,7 +14,9 @@ import { type NightAction, useNightApi } from "./use-night-api";
 
 type SupportCall = Exclude<DanaCall, "briefing">;
 
-export function NightRun({ apiUser, relayBase, entry, incidentId }: { apiUser?: string; relayBase?: string; entry?: FixtureEntry; incidentId?: string }) {
+export type NightStage = "page" | "briefing" | "board";
+
+export function NightRun({ apiUser, relayBase, entry, incidentId, onStage }: { apiUser?: string; relayBase?: string; entry?: FixtureEntry; incidentId?: string; onStage?: (stage: NightStage) => void }) {
   const [stage, setStage] = useState<"page" | "briefing" | "board">(entry?.briefingPending ? "briefing" : entry?.answered ? "board" : "page");
   const [answerPending, setAnswerPending] = useState(false);
   const [snoozed, setSnoozed] = useState(false);
@@ -42,6 +44,10 @@ export function NightRun({ apiUser, relayBase, entry, incidentId }: { apiUser?: 
   useEffect(() => {
     if (visibleStage !== "page") heading.current?.focus();
   }, [visibleStage]);
+
+  useEffect(() => {
+    onStage?.(visibleStage);
+  }, [visibleStage, onStage]);
 
   useEffect(() => {
     if (supportCall) supportHeading.current?.focus();
