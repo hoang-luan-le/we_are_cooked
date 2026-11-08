@@ -4,9 +4,9 @@ import type { ActionRequest, IncidentState } from "../../../packages/contracts/t
 const api = process.env.NIGHT_TEST_API_ORIGIN;
 const peer = process.env.NIGHT_TEST_PEER_ORIGIN;
 
-test("two demo members share evidence, preserve a draft, and count one real Help call", async ({ page, browser, request }) => {
+test("two demo members investigate, share evidence, count one Help call, and hand off after rollback", async ({ page, browser, request }) => {
   test.skip(!api || !peer || process.env.NIGHT_TEST_TEAM_ENTRY !== "1", "Run the team backend and two local web identities.");
-  test.setTimeout(45_000);
+  test.setTimeout(60_000);
   const created = await request.post(`${api}/api/incident/start`, {
     headers: { "X-Demo-User": "demo-a" }, data: { level: "explore", teammates: ["demo-b"] },
   });
@@ -29,8 +29,50 @@ test("two demo members share evidence, preserve a draft, and count one real Help
   await expect(page.getByText(/Dana relay · text · Scripted/)).toBeVisible();
   await page.getByRole("button", { name: "Continue to dashboard" }).click();
   await expect(page.getByRole("heading", { name: "Checkout incident" })).toBeVisible();
+  const logsPath = `/api/night/panels?incident=${id}&panel=logs`;
+  expect((await page.request.get(logsPath)).status()).toBe(403);
+  const outsiderIncident = await request.post(`${api}/api/incident/start`, {
+    headers: { "X-Demo-User": "demo-b" }, data: { level: "explore" },
+  });
+  const outsiderId = (await outsiderIncident.json()).incident_id;
+  expect((await page.request.get(`/api/night/panels?incident=${outsiderId}&panel=logs`)).status()).toBe(404);
+
   await page.getByRole("button", { name: "Open checkout logs" }).click();
-  await expect(page.getByText("The team API has not supplied role-specific log entries.")).toBeVisible();
+  const logs = page.getByRole("region", { name: "Checkout logs" });
+  await expect(logs.getByRole("heading")).toBeFocused();
+  await logs.getByRole("searchbox", { name: "Search logs" }).fill("KeyError");
+  await logs.getByRole("combobox", { name: "Severity" }).selectOption("ERROR");
+  const results = logs.getByRole("region", { name: "Log results" });
+  let failLogs = false;
+  await page.route("**/api/night/panels?*", route =>
+    failLogs && new URL(route.request().url()).searchParams.get("panel") === "logs"
+      ? route.fulfill({ status: 503 }) : route.continue());
+  await logs.getByRole("button", { name: "Load matching logs" }).click();
+  await expect(results.getByText(/KeyError/).first()).toBeVisible();
+  await expect(results.getByText("INFO", { exact: true })).toHaveCount(0);
+  await results.locator("summary").first().click();
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await results.getByRole("button", { name: "Copy log entry" }).click();
+  await expect(logs.getByText(/Log entry at .* copied/)).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toContain("KeyError");
+  failLogs = true;
+  await logs.getByRole("button", { name: "Load matching logs" }).click();
+  await expect(logs.getByText("Refresh failed. Showing the last loaded data.")).toBeVisible();
+  await expect(results.getByText(/KeyError/).first()).toBeVisible();
+  failLogs = false;
+  await logs.getByRole("button", { name: "Retry panel" }).click();
+  await expect(logs.getByText("Refresh failed. Showing the last loaded data.")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Open deploy history" }).click();
+  await page.getByText("Inspect v2.14.0 diff · Scenario fallback").click();
+  await expect(page.getByText("checkout/pricing.py", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Open runbooks" }).click();
+  await page.getByRole("button", { name: "Checkout error rate is high" }).click();
+  await expect(page.getByRole("list", { name: "Checkout error rate is high" })).toContainText("last good version");
+  await page.getByText("Incident timeline and metric history", { exact: true }).click();
+  await expect(page.getByText(/bad release v2.14.0/)).toBeVisible();
+  await expect(page.getByRole("table", { name: "Incident API metrics history" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Write shift handoff" })).toHaveCount(0);
 
   const otherContext = await browser.newContext();
   try {
@@ -88,6 +130,22 @@ test("two demo members share evidence, preserve a draft, and count one real Help
     await expect(other.getByText("Recovered", { exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText("Recovered", { exact: true })).toBeVisible({ timeout: 15_000 });
     expect((await state()).actions_taken.filter(action => action === "rollback")).toHaveLength(1);
+    await expect(page.getByRole("region", { name: "Deploy history" })).toContainText("Active version at last load v2.13.9");
+    await expect(page.getByRole("listitem").filter({ hasText: /\d\d:\d\d:\d\d · rollback/ })).toBeVisible();
+
+    await page.getByRole("button", { name: "Write shift handoff" }).click();
+    await expect(page.getByRole("textbox", { name: "What happened" })).toBeFocused();
+    await page.getByRole("textbox", { name: "What happened" }).fill("Guest checkouts failed after the loyalty release.");
+    await page.getByRole("textbox", { name: "Current state" }).fill("Checkout recovered and discounts are off.");
+    await page.getByRole("textbox", { name: "What was tried" }).fill("Rolled back to v2.13.9.");
+    await page.getByRole("textbox", { name: "Remaining risks" }).fill("A permanent fix needs a guest checkout regression test.");
+    await page.getByRole("textbox", { name: "Morning teammate handles (optional)" }).fill("luan");
+    await page.getByRole("button", { name: "Save shift handoff" }).click();
+    await expect(page.getByText("Shift handoff saved.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Shift handoff" })).toBeFocused();
+    await expect(other.getByRole("region", { name: "Shift handoff" })).toContainText("Checkout recovered and discounts are off.");
+    await expect.poll(async () => (await state()).phase).toBe("handed_off");
+    expect((await state()).handoff).toMatchObject({ by: "demo-a", morning_pair: ["luan"] });
   } finally {
     await otherContext.close();
   }

@@ -39,7 +39,7 @@ export async function POST(request: Request) {
       body.action !== "share_finding" && body.action !== "status_update")) {
     return new Response(null, { status: 422 });
   }
-  if (body.action === "open_panel" && body.panel !== "dashboard" && body.panel !== "logs" && body.panel !== "deploys") {
+  if (body.action === "open_panel" && body.panel !== "dashboard" && body.panel !== "logs" && body.panel !== "deploys" && body.panel !== "runbook") {
     return new Response(null, { status: 422 });
   }
   const note = body.action === "share_finding" || body.action === "status_update";

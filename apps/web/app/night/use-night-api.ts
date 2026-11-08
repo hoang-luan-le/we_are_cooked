@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ActionRequest, ActionResponse, IncidentState } from "../../../../packages/contracts/types";
+import type { ActionRequest, ActionResponse, HandoffRequest, IncidentState } from "../../../../packages/contracts/types";
 import type { MetricSample } from "./fixture";
 
 export type NightAction =
   | { action: "answer" | "snooze" | "rollback" }
   | { action: "share_finding" | "status_update"; text: string }
-  | { action: "open_panel"; panel: "dashboard" | "logs" | "deploys" };
+  | { action: "open_panel"; panel: "dashboard" | "logs" | "deploys" | "runbook" };
 
 type NightIncident = Omit<IncidentState, "ringing"> & { ringing?: boolean };
 export type NightSnapshot = {
@@ -134,5 +134,28 @@ export function useNightApi(enabled: boolean, incidentId?: string) {
     }
   }
 
-  return { snapshot, read, readError, pending, actionError, retryAction, act };
+  async function saveHandoff(draft: HandoffRequest) {
+    if (!incidentId || active.current?.write) return 409;
+    active.current?.controller.abort();
+    const controller = new AbortController();
+    active.current = { controller, write: true };
+    setPending(true);
+    try {
+      const response = await fetch(`/api/night/handoff?incident=${encodeURIComponent(incidentId)}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(draft), signal: controller.signal,
+      });
+      return controller.signal.aborted ? 0 : response.status;
+    } catch {
+      return controller.signal.aborted ? 0 : 503;
+    } finally {
+      if (active.current?.controller === controller) {
+        active.current = null;
+        setPending(false);
+        void read();
+      }
+    }
+  }
+
+  return { snapshot, read, readError, pending, actionError, retryAction, act, saveHandoff };
 }

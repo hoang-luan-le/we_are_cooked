@@ -1,39 +1,34 @@
-STATUS: READY_FOR_REVIEW
-COMMAND_ID: 01-02-QUALITY-01
+STATUS: BLOCKED
+COMMAND_ID: 03-NIGHT-BOARD-01
 
-# Phase 01 and Phase 02 quality review
+# Phase 03 Shared Night board and typed handoff
 
-[Phase 01 Night 2D](https://github.com/thanhtungnguyen-dev/we_are_cooked/pull/2) and [Phase 02 Landing and Entry](https://github.com/thanhtungnguyen-dev/we_are_cooked/pull/3) are separate merged checkpoints. This follow-up starts at [2b0a441](https://github.com/thanhtungnguyen-dev/we_are_cooked/commit/2b0a4415a762ff582a05fec9a9cff72876bba7ef) on branch-codex. [Phase 03 report](https://github.com/thanhtungnguyen-dev/we_are_cooked/blob/2b0a4415a762ff582a05fec9a9cff72876bba7ef/reports/codex.md)
+The local team walkthrough is ready to review. The backend contract still lacks per-member Night roles and monotonic snapshot revisions. The work builds on the [earlier Phase 03 slice](https://github.com/thanhtungnguyen-dev/we_are_cooked/blob/2b0a4415a762ff582a05fec9a9cff72876bba7ef/reports/codex.md) and the [Phase 01 and 02 quality follow-up](https://github.com/thanhtungnguyen-dev/we_are_cooked/commit/febc0817fdefdd83611e1f10b905e97e699b09a6). The branch synced [fork main at 8989acd](https://github.com/thanhtungnguyen-dev/we_are_cooked/commit/8989acd317fa517fe547f7ad8136684f834b313f), which includes [Duy’s P0 backend at 474623a](https://github.com/hoang-luan-le/we_are_cooked/commit/474623ac2d5f6905714efc5012efe9c6066a320f).
 
 ## A. Full-stack and React
 
-- **Phase 01.** [NightRun](../apps/web/app/night/night-run.tsx) keeps a pending or unconfirmed Answer on the call screen when polling reports an advanced incident. A retry uses the existing idempotency key and opens the relay after the backend confirms it. The player can also open the board directly when the incident has already advanced. The [Dana panel](../apps/web/app/night/dana-briefing.tsx) keeps captions, the unsent draft and keyboard focus while changing modes. [The connection](../apps/web/app/night/dana-connection.ts) normally drains queued audio, with a separate user action to skip a suspended queue. The [fixture board](../apps/web/app/night/incident-board.tsx) applies the version and discount changes at rollback confirmation while metrics recover over time.
-- **Phase 02.** The [landing](../apps/web/app/page.tsx) uses server-rendered values from the existing scenario and keeps its navigation free of writes. [EntryForm](../apps/web/app/start/entry-form.tsx) uses a synchronous ref to guard the fixture save and visible state to show its pending transition. [TeamEntry](../apps/web/app/start/team-entry.tsx) verifies the remembered incident through the member-scoped local bridge. Its effect aborts on exit. An authoritative 404 removes the matching saved pointer. A transient failure keeps the link. The roster can be refreshed without losing selections that are still present. The effect cancels a prior lookup when a new Join begins.
+- [Night panels](../apps/web/app/night/night-panels.tsx) request server-filtered logs, release diffs, runbooks and a metric history window through the [same-origin panel bridge](../apps/web/app/api/night/panels/route.ts). The bridge checks the configured member and the incident’s unlocked panels before fetching evidence. Opening a panel still records the existing `open_panel` action for Dana’s fact ladder. Release diffs retain the backend’s GitHub or scenario source label. The baseline fixture and legacy local API keep their labeled samples.
+- The panel effect runs when its URL, refresh counter or relevant phase changes. Cleanup aborts the previous request. A failed refresh leaves the last loaded data visible and offers a retry in that panel. Log filtering waits for explicit submit. Reading or filtering one panel does not reset another panel or the shared finding draft. The current metric samples still follow the incident poll, while the expandable history supplies its own sample times and events.
+- [NightHandoff](../apps/web/app/night/night-handoff.tsx) collects what happened, current state, what was tried and remaining risks. It can include optional morning teammates. [The handoff bridge](../apps/web/app/api/night/handoff/route.ts) validates these fields and forwards to the backend. The backend decides who can write and when, and a confirmed save is visible to the second member through polling. [useNightApi](../apps/web/app/night/use-night-api.ts) serializes the handoff POST alongside other writes in that browser and aborts a preceding read before the write. The draft stays visible after a rejection. The handoff contract has no request idempotency key, so an unconfirmed result instructs the player to check the shared note before retrying.
 
 ## B. Data structures and algorithms
 
-The Dana connection already maintains a Set of scheduled audio sources. An explicit skip visits n queued sources in O(n) time with O(1) extra space and calls the same terminal cleanup as normal completion. Team entry filters at most three selected handles against the refreshed roster of m handles in O(m) time with a constant-size result. A precomputed Set would allocate O(m) extra space for a lookup that happens only during refresh.
+The logs request caps results at 60. For n returned lines and L total characters, rendering and forming row keys costs O(n + L) time and O(n + L) space. A virtual list would help if the contract served thousands of rows at once. The metrics history endpoint returns a 20-minute window sampled every 30 seconds, so the historical table is small. Keeping it separate from the seven live samples lets a confirmed rollback update the live chart without refetching historical data on every poll.
 
-## C. System design and scored evidence
+The optional morning handles use a Set to remove duplicates while preserving first-seen order. For k entered handles, the deduplication is O(k) expected time and O(k) space. The form caps k at four, and the backend checks that every handle exists.
 
-The 100-point readiness rubric below was derived for this review from the frontend plan, UI rules, and current product scope. It prioritizes completed player flows and failure recovery. Phase 01 and Phase 02 were scored separately on the tested branch. Unverified provider and backend contract checks received zero credit.
+## C. System design and remaining contracts
 
-| Criterion | Weight | Phase 01 | Phase 02 |
-| --- | ---: | --- | --- |
-| Core player flow | 30 | 30. Answer, caption, inspect, rollback and recover. | 30. Landing, difficulty, fixture entry, local cohort join, team start and resume. |
-| Failure and resume | 22 | 22. Same-key Answer and rollback retries, denied mic, relay fallback, and normal drain or explicit skip. | 22. Invalid and fixture-expired codes, legacy saves, stale links, browser storage rejection, and temporary API failures. |
-| Keyboard, touch and layout | 15 | 15. Focusable captions, rollback dialog Escape and focus return, mobile actions, reflow. | 15. Keyboard and touch entry, visible selection and CTA, responsive preview and form. |
-| Feedback and state clarity | 15 | 15. Explicit relay mode, disabled controls during pending work, and distinct recovering and recovered states. | 15. Scenario versus local API labels, pending navigation, resume priority, refreshed roster and recovery messages. |
-| Build and regression evidence | 10 | 10. Production build, typecheck, and browser suites passed. | 10. Production gate and both entry modes passed browser checks. |
-| Live and full contract evidence | 8 | 0. Live Deepgram, physical microphone and fully sourced panel details remain open. | 0. Server-assigned roles, invite expiry, account-wide resume, and revisions remain open. |
-| **Total** | **100** | **92** | **92** |
+The team API supplies shared evidence, teammate membership, allowed actions and rollback state. Its panel routes expose shared data and do not carry a per-member Night role. The demo bridge enforces membership and panel unlocks for its own reads. Duy’s direct API reads and Luan’s relay need their own authenticated scope before this can be used as a production permission boundary.
 
-## Verification
+Duy still needs a distinct Night Lead and Investigator contract, role-scoped evidence and action authorization, and a revision or equivalent ordering token. Browser cancellation prevents a known local race but cannot order snapshots across clients. Luan and Duy still need a stable logical call identity before voice Help can switch transports without consuming a second hint. Help uses one text relay socket. Debrief remains gated on a confirmed deployed fix, with the gate exercised against simulated state. The real GitHub diff and live Deepgram paths need provider configuration and separate verification.
 
-- Production build and typecheck passed. Seventeen browser cases passed across the fixture, legacy FastAPI, and two-member team FastAPI configurations. The live-API browser check deliberately lost both an Answer and a rollback acknowledgement and confirmed one backend action for each.
-- Chromium layout checks passed at 320, 390, and 1440 pixels with reduced motion. The landing, entry and Night dashboard had no horizontal overflow or page errors. The production opt-in gate passed.
-- The two-member regression used the actual local scripted Dana relay. Browser audio tests used synthetic mic and PCM. Live Deepgram and device audio were outside the available evidence.
+## Checks
 
-**Explain it back.** Why does a failed network response after Answer require the same key on retry, while an unavailable saved link can be removed only after an authoritative 404?
+- Production build and typecheck passed.
+- Seventeen browser checks passed across fixtures, the legacy FastAPI demo and the latest local team FastAPI. The team walkthrough used two demo handles and the actual scripted Dana relay. It covered panel access checks, log filtering and clipboard, stale panel retry, scenario diff source, runbook steps, metric history, a lost finding acknowledgement, one Help increment, recovery in both browsers, and a shared handoff.
+- Eighty-one backend smoke checks and nine offline voice checks passed. The shared board passed Chromium layout checks at 320, 390, and 1440 px. The debrief gate was browser-tested with simulated state. Live Deepgram, physical device audio and a real GitHub release diff were not exercised.
 
-**Quick verification.** Run the [browser setup](../apps/web/README.md) and [lost-response test](../apps/web/tests/night-api.spec.ts). Compare the outbound keys with the incident action history.
+**Explain it back.** Why do the metrics shown during recovery still come from the incident poll while the historical timeline has its own fetch?
+
+**Quick verification.** Follow the [two-browser setup](../apps/web/README.md) and run [the Night board test](../apps/web/tests/night-board.spec.ts). Inspect the first denied log request, the successful open action, and the handoff that reaches the other browser.

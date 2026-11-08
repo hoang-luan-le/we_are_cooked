@@ -232,3 +232,12 @@ button:active:not(:disabled), .button:active { transform: translateY(1px); }
 @media (prefers-reduced-motion: reduce) {
   button:active:not(:disabled), .button:active { transform: none; }
 }
+
+.panel-scroll { max-width: 100%; overflow: auto; }
+.team-log-list { max-height: 28rem; overflow: auto; }
+.log-preview { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.handoff-parts { display: grid; gap: 10px; }
+.handoff-parts dt { font-weight: 700; }
+.handoff-parts dd { margin-inline-start: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.evidence-panel form { max-width: 42rem; }
+.evidence-panel form > label { width: 100%; }

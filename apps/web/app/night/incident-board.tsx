@@ -2,6 +2,7 @@
 
 import { type RefObject, useEffect, useRef, useState } from "react";
 import { DEPLOYS, HISTORY, LOGS, RECOVERY, RECOVERY_LOG, type MetricSample } from "./fixture";
+import { TeamDeploys, TeamLogs, TeamMetricHistory, TeamRunbooks } from "./night-panels";
 import type { NightAction, NightSnapshot } from "./use-night-api";
 
 const [currentDeploy, rollbackDeploy] = DEPLOYS;
@@ -116,7 +117,7 @@ function recoveryStep(startedAt: number) {
   return RECOVERY.length;
 }
 
-export function IncidentBoard({ heading, snapshot, pending, finalCaption, onAction, initialRollbackAt = null, onFixtureRollback, teamMode = false }: {
+export function IncidentBoard({ heading, snapshot, pending, finalCaption, onAction, initialRollbackAt = null, onFixtureRollback, teamIncidentId }: {
   heading: RefObject<HTMLHeadingElement | null>;
   snapshot?: NightSnapshot;
   pending: boolean;
@@ -124,7 +125,7 @@ export function IncidentBoard({ heading, snapshot, pending, finalCaption, onActi
   onAction: (intent: NightAction) => Promise<boolean>;
   initialRollbackAt?: number | null;
   onFixtureRollback?: (startedAt: number) => void;
-  teamMode?: boolean;
+  teamIncidentId?: string;
 }) {
   const [step, setStep] = useState(() => initialRollbackAt === null ? null : recoveryStep(initialRollbackAt));
   const rollbackStart = useRef(initialRollbackAt);
@@ -142,7 +143,7 @@ export function IncidentBoard({ heading, snapshot, pending, finalCaption, onActi
   const latest = samples[samples.length - 1];
   const canOpenPanel = !pending && incident?.allowed_actions.includes("open_panel");
 
-  async function openPanel(panel: "dashboard" | "logs" | "deploys", headingId: string) {
+  async function openPanel(panel: "dashboard" | "logs" | "deploys" | "runbook", headingId: string) {
     if (await onAction({ action: "open_panel", panel })) {
       window.requestAnimationFrame(() => document.getElementById(headingId)?.focus());
     }
@@ -193,6 +194,7 @@ export function IncidentBoard({ heading, snapshot, pending, finalCaption, onActi
               ))}</tbody>
             </table>
           </details>
+          {teamIncidentId && incident ? <TeamMetricHistory incidentId={teamIncidentId} phase={incident.phase} /> : null}
         </section>
         )}
         <section className="panel" aria-labelledby="mitigation-title">
@@ -234,17 +236,17 @@ export function IncidentBoard({ heading, snapshot, pending, finalCaption, onActi
         {incident && !incident.unlocked.includes("logs") ? (
           <LockedPanel title="Checkout logs" id="logs-title" pending={!canOpenPanel}
             onOpen={() => void openPanel("logs", "logs-title")} />
-        ) : teamMode ? <section className="panel" aria-labelledby="logs-title">
-          <h2 id="logs-title" tabIndex={-1}>Checkout logs</h2>
-          <p className="muted">The team API has not supplied role-specific log entries.</p>
-        </section> : <CheckoutLogs recovered={!incident && recovered} api={Boolean(incident)} />}
+        ) : teamIncidentId ? <TeamLogs incidentId={teamIncidentId} /> : <CheckoutLogs recovered={!incident && recovered} api={Boolean(incident)} />}
         {incident && !incident.unlocked.includes("deploys") ? (
           <LockedPanel title="Deploy history" id="deploys-title" pending={!canOpenPanel}
             onOpen={() => void openPanel("deploys", "deploys-title")} />
-        ) : teamMode ? <section className="panel" aria-labelledby="deploys-title">
-          <h2 id="deploys-title" tabIndex={-1}>Deploy history</h2>
-          <p className="muted">The team API has not supplied role-specific release details.</p>
-        </section> : <DeployHistory activeVersion={activeVersion} api={Boolean(incident)} />}
+        ) : teamIncidentId && incident ? <TeamDeploys incidentId={teamIncidentId} status={incident.status} />
+          : <DeployHistory activeVersion={activeVersion} api={Boolean(incident)} />}
+        {teamIncidentId && incident ? (
+          incident.unlocked.includes("runbook") ? <TeamRunbooks incidentId={teamIncidentId} />
+            : <LockedPanel title="Runbooks" id="runbook-title" pending={!canOpenPanel}
+                onOpen={() => void openPanel("runbook", "runbook-title")} />
+        ) : null}
       </div>
     </>
   );

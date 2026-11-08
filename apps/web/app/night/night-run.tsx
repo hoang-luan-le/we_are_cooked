@@ -7,6 +7,7 @@ import { DanaBriefing, useDanaBriefing } from "./dana-briefing";
 import { prepareDanaAudio } from "./dana-connection";
 import { fixtureCohort, type FixtureEntry, levels, updateFixtureEntry } from "./fixture-entry";
 import { IncidentBoard } from "./incident-board";
+import { NightHandoff } from "./night-handoff";
 import { TeamEvidence } from "./team-evidence";
 import { type NightAction, useNightApi } from "./use-night-api";
 
@@ -231,9 +232,11 @@ export function NightRun({ apiUser, relayBase, entry, incidentId }: { apiUser?: 
               </details>
             ) : null}
             <IncidentBoard heading={heading} snapshot={api.snapshot} pending={api.pending || api.readError}
-              finalCaption={finalCaption} onAction={perform} initialRollbackAt={entry?.rollbackAt} teamMode={Boolean(incidentId)}
+              finalCaption={finalCaption} onAction={perform} initialRollbackAt={entry?.rollbackAt} teamIncidentId={incidentId}
               onFixtureRollback={entry ? rollbackAt => setSaveFailed(!updateFixtureEntry(entry.id, { type: "rollback", startedAt: rollbackAt })) : undefined} />
             {api.snapshot ? <TeamEvidence snapshot={api.snapshot} pending={api.pending || api.readError} onAction={perform} /> : null}
+            {incidentId && apiUser && incident ? <NightHandoff incident={incident} user={apiUser}
+              unavailable={api.pending || api.readError} onSave={api.saveHandoff} /> : null}
           </>
         )}
       </main>

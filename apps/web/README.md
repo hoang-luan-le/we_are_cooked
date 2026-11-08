@@ -55,7 +55,7 @@ NIGHT_TEST_TEAM_ENTRY=1 NIGHT_TEST_API_ORIGIN=http://127.0.0.1:8000 npm run test
 
 ## Verify the shared Night board
 
-Use the team backend with its Dana facts URL set to that same loopback server. Run the local relay without proxy settings if a configured SOCKS proxy prevents its loopback requests. Build Next.js, then start the second web identity in another terminal.
+Use the team backend at [`474623a`](https://github.com/hoang-luan-le/we_are_cooked/commit/474623ac2d5f6905714efc5012efe9c6066a320f) or a compatible commit with its Dana facts URL set to the same loopback server. Run the local relay without proxy settings if a configured SOCKS proxy prevents its loopback requests. Build Next.js, then start the second web identity in another terminal.
 
 ```sh
 NIGHT_FIXTURES=1 NIGHT_TEAM_ENTRY=1 NIGHT_API_ORIGIN=http://127.0.0.1:8000 NIGHT_DEMO_USER=demo-b npm run start -- --hostname 127.0.0.1 --port 3212
@@ -68,3 +68,7 @@ NIGHT_TEST_TEAM_ENTRY=1 NIGHT_TEST_API_ORIGIN=http://127.0.0.1:8000 NIGHT_TEST_R
 ```
 
 A Help call starts in relay text. The relay selects its engine and counts the hint. Stakeholder nudges appear between calls. Debrief becomes available when the incident reports a deployed fix.
+
+Team incidents load logs, deploys, metric history, and runbooks through the Next.js demo bridge after the corresponding panels are unlocked. The bridge checks the configured demo member against the incident. The deploy panel labels whether the backend returned a GitHub diff or its scenario fallback. The main metrics read continues to follow the incident snapshot during recovery.
+
+After recovery, the Night participants can save a four-part shift handoff. The other browser sees the note through its normal incident poll. The API controls who can save or edit it. The optional morning handles must already be known to the backend.
