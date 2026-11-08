@@ -26,6 +26,7 @@ import httpx  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 import adzuna  # noqa: E402
+import oss  # noqa: E402
 import jwt  # noqa: E402
 from config import DEFAULT_DEMO_TEAM, DEFAULT_SCENARIO_PATH, Settings  # noqa: E402
 from engine import panels  # noqa: E402
@@ -150,7 +151,8 @@ class Harness:
     def __init__(self, scenario_path: Path = DEFAULT_SCENARIO_PATH, auth0_domain: str = "",
                  sqlite_path: str = ":memory:", database_url: str = "", clock: FakeClock | None = None,
                  demo_team: tuple[str, ...] = DEFAULT_DEMO_TEAM, github: "FakeGitHub | None" = None,
-                 jobs_path: Path | None = None, auth0: "FakeAuth0 | None" = None) -> None:
+                 jobs_path: Path | None = None, auth0: "FakeAuth0 | None" = None,
+                 fixes_path: Path | None = None) -> None:
         self.clock = clock or FakeClock()
         if auth0 is not None:
             auth0_domain = AUTH0_DOMAIN
@@ -158,7 +160,8 @@ class Harness:
                             auth0_audience=AUTH0_AUDIENCE,
                             sqlite_path=sqlite_path, database_url=database_url, demo_team=demo_team,
                             pilot_repos=(PILOT,) if github else (), mentor_github=("mentor-ana",),
-                            jobs_snapshot_path=jobs_path or API_DIR / "tests" / "no-jobs-snapshot.json")
+                            jobs_snapshot_path=jobs_path or API_DIR / "tests" / "no-jobs-snapshot.json",
+                            next_fixes_snapshot_path=fixes_path or API_DIR / "tests" / "no-fixes-snapshot.json")
         transport = httpx.MockTransport(github.handle) if github else None
         self.app = create_app(settings, clock=self.clock, github_transport=transport,
                               auth0_transport=httpx.MockTransport(auth0.handle) if auth0 else None)
@@ -1059,6 +1062,60 @@ def test_jobs_come_from_a_saved_snapshot_never_invented():
             pass
         else:
             raise AssertionError("expected AdzunaError")
+
+
+def _fake_github_search(request: httpx.Request) -> httpx.Response:
+    assert request.url.path == "/search/issues" and 'label:"good first issue"' in request.url.params["q"]
+    base = {"state": "open", "assignee": None, "assignees": [], "comments": 2, "labels": [{"name": "good first issue"}],
+            "repository_url": "https://api.github.com/repos/example-org/example-lib",
+            "created_at": "2026-10-01T00:00:00Z", "updated_at": "2026-11-01T00:00:00Z",
+            "user": {"login": "someone-real"}}
+    return httpx.Response(200, json={"items": [
+        {**base, "title": "Handle a missing key in config loader", "html_url": "https://github.com/example-org/example-lib/issues/1"},
+        {**base, "title": "Taken already", "html_url": "https://github.com/example-org/example-lib/issues/2",
+         "assignee": {"login": "busy"}},
+        {**base, "title": "A pull request", "html_url": "https://github.com/example-org/example-lib/pull/3",
+         "pull_request": {}},
+        {**base, "title": "Closed one", "html_url": "https://github.com/example-org/example-lib/issues/4", "state": "closed"},
+    ]})
+
+
+def test_next_fixes_are_real_open_unassigned_issues_from_a_snapshot():
+    searches = [{"skill": s.skill, "query": s.query} for s in SPEC.next_fix_searches]
+    snapshot = oss.fetch_snapshot(searches, transport=httpx.MockTransport(_fake_github_search),
+                                  now=datetime(2026, 11, 8, 10, 0, tzinfo=timezone.utc), sleep=lambda s: None)
+    assert [s["skill"] for s in snapshot["searches"]] == [s.skill for s in SPEC.next_fix_searches]
+    issues = snapshot["searches"][0]["issues"]
+    assert [i["title"] for i in issues] == ["Handle a missing key in config loader"]  # no assigned, PR or closed
+    assert issues[0]["repo"] == "example-org/example-lib" and "someone-real" not in json.dumps(snapshot)
+    with Harness() as h:
+        empty = h.client.get("/api/next-fixes").json()
+        assert empty["searches"] == [] and empty["fetched_at"] is None and "oss.py" in empty["message"]
+    path = Path(_db_path()).with_suffix(".json")
+    try:
+        oss.save_snapshot(snapshot, path)
+        with Harness(fixes_path=path) as h:
+            served = h.client.get("/api/next-fixes").json()
+        assert served["fetched_at"] == "2026-11-08T10:00:00+00:00" and served["searches"][0]["issues"] == issues
+    finally:
+        path.unlink(missing_ok=True)
+    calls, waits = [], []
+
+    def slow_then_ok(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        if len(calls) == 1:
+            return httpx.Response(403, json={"message": "You have exceeded a secondary rate limit."})
+        return _fake_github_search(request)
+
+    retried = oss.fetch_snapshot(searches[:1], transport=httpx.MockTransport(slow_then_ok), sleep=waits.append)
+    assert retried["searches"][0]["issues"] == issues and waits == [oss.SLOW_DOWN_WAIT_S]
+    down = httpx.MockTransport(lambda request: httpx.Response(403, json={"message": "Bad credentials"}))
+    try:
+        oss.fetch_snapshot(searches, transport=down, sleep=lambda s: None)
+    except oss.OssError:
+        pass
+    else:
+        raise AssertionError("expected OssError")
 
 
 def _check(h: Harness, stage: str, choice: str, headers: dict = TEAM):
