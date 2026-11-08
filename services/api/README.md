@@ -25,11 +25,12 @@ python tests/test_smoke.py                 # must print ALL GOOD before you push
 | `config.py` / `auth.py` | Settings from the root `.env`; `X-Internal-Key` / `X-Demo-User` |
 | `scenario_loader.py` / `scenario_models.py` | Loads + validates `scenario/scenario.json`; splits off `answer_key` |
 | `engine/` | Pure functions over frozen state: actions, metrics, help ladder + nudge, rubric, response views |
-| `store.py` | In-memory incidents (demo mode) with idempotency keys |
-| `routes/` | `/api/incident/{id}`, `/facts`, `/action`, `/hint`, `/handoff` (+ `/rating`), `/api/debrief`, `/api/cohorts`, `/api/demo/reset` |
+| `store.py` | Live incidents in memory, a snapshot saved after every change; idempotency keys |
+| `db.py` / `engine/snapshot.py` | SQLite tables `incidents`, `cohorts`, `cohort_members` (file in `data/`, gitignored) |
+| `routes/` | `/api/incident/start`, `/api/incident/{id}`, `/facts`, `/action`, `/hint`, `/handoff` (+ `/rating`), `/api/debrief`, `/api/cohorts`, `/api/demo/reset` |
 | `cohorts.py` | Cohorts: create, join by code, members-only list |
 
 Contract: `packages/contracts/types.ts` and `dana-voice.md` §5.
 
 ## Not built yet
-PR verify (GitHub), Auth0 tokens, SQLite/Tiger Data persistence, panel content (logs/deploys/runbook), Adzuna, open-source issues.
+PR verify (GitHub), Auth0 tokens, Tiger Data (Postgres) + metrics history, panel content (logs/deploys/runbook), Adzuna, open-source issues.

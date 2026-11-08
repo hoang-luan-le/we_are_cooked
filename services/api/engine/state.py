@@ -76,6 +76,7 @@ class Handoff:
     current_state: str
     tried: str
     risks: str
+    morning_pair: tuple[str, ...] = ()   # named by the night pair; they join and rate
     rating: HandoffRating | None = None
 
     @property
@@ -108,6 +109,7 @@ class IncidentState:
     debrief: Debrief | None = None
     handoff: Handoff | None = None
     actors: tuple[str, ...] = ()        # everyone who took an incident action, in order
+    teammates: tuple[str, ...] = ()     # set at start; the handoff's morning pair is added on top
 
     @property
     def opened_panels(self) -> tuple[str, ...]:
@@ -128,11 +130,22 @@ class IncidentState:
         return tuple(note.text for note in self.findings + self.status_updates) + handoff
 
     @property
+    def all_teammates(self) -> tuple[str, ...]:
+        """Who may act: the starting teammates plus the morning pair named in the handoff."""
+        morning = self.handoff.morning_pair if self.handoff else ()
+        return tuple(dict.fromkeys(self.teammates + morning))
+
+    @property
     def loyalty_discounts(self) -> str:
         return "off" if self.status == "rolled_back" else "on"
 
 
-def new_incident(incident_id: str, level: str, now: float) -> IncidentState:
+def new_incident(incident_id: str, level: str, now: float, teammates: tuple[str, ...]) -> IncidentState:
     if level not in LEVELS:
         raise ValueError(f"level must be one of {', '.join(LEVELS)}")
-    return IncidentState(incident_id=incident_id, level=level, paged_at=now, last_contact_at=now)
+    if not teammates:
+        raise ValueError("an incident needs at least one teammate")
+    return IncidentState(
+        incident_id=incident_id, level=level, paged_at=now, last_contact_at=now,
+        teammates=tuple(dict.fromkeys(teammates)),
+    )

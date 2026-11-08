@@ -1,14 +1,19 @@
-"""Cohorts: create, join by code, list members. In memory (demo mode); persistence comes later.
+"""Cohorts: create, join by code, list members. Saved to the database on every change.
 
 Privacy (users may be minors, CLAUDE.md hard rule 6): members are pseudonymous handles only,
 and only members can see a cohort.
 """
 from __future__ import annotations
 
+import logging
 import secrets
+import sqlite3
 import threading
+import time
 from dataclasses import dataclass, replace
+from typing import Callable
 
+logger = logging.getLogger("incident_lab.cohorts")
 JOIN_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # no 0/O, 1/I/L: easy to read aloud
 JOIN_CODE_LENGTH = 6
 MAX_MEMBERS = 50
@@ -37,16 +42,22 @@ def normalize_code(code: str) -> str:
 
 
 class CohortStore:
-    def __init__(self) -> None:
+    """In memory, written through to the database (`db`) when one is given."""
+
+    def __init__(self, db=None, clock: Callable[[], float] = time.time) -> None:
         self._lock = threading.Lock()
-        self._by_id: dict[str, Cohort] = {}
-        self._id_by_code: dict[str, str] = {}
+        self._db = db
+        self._clock = clock
+        loaded = db.load_cohorts() if db is not None else []
+        self._by_id: dict[str, Cohort] = {c.id: c for c in loaded}
+        self._id_by_code: dict[str, str] = {c.join_code: c.id for c in loaded}
 
     def create(self, name: str, creator: str) -> Cohort:
         with self._lock:
             cohort = Cohort(
                 id=self._new_id(), name=name, join_code=self._new_code(), created_by=creator, members=(creator,),
             )
+            self._persist(lambda db: db.save_cohort(cohort, self._clock()))
             self._save(cohort)
             self._id_by_code = {**self._id_by_code, cohort.join_code: cohort.id}
             return cohort
@@ -62,6 +73,7 @@ class CohortStore:
             if len(cohort.members) >= MAX_MEMBERS:
                 raise CohortFull(cohort_id)
             joined = replace(cohort, members=cohort.members + (handle,))
+            self._persist(lambda db: db.add_cohort_member(cohort_id, handle, self._clock()))
             self._save(joined)
             return joined
 
@@ -72,6 +84,15 @@ class CohortStore:
             if cohort is None or handle not in cohort.members:
                 raise CohortNotFound(cohort_id)
             return cohort
+
+    def _persist(self, write: Callable) -> None:
+        if self._db is None:
+            return
+        try:
+            write(self._db)
+        except sqlite3.Error:
+            # Keep the demo going from memory; the failure is logged with its traceback.
+            logger.exception("Could not save a cohort change")
 
     def _save(self, cohort: Cohort) -> None:
         self._by_id = {**self._by_id, cohort.id: cohort}

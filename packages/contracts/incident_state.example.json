@@ -24,6 +24,13 @@
     "answer",
     "snooze"
   ],
+  "teammates": [
+    "duy",
+    "tung",
+    "luan",
+    "demo-a",
+    "demo-b"
+  ],
   "hint_calls": 0,
   "nudge": false,
   "stakeholder_message": null,

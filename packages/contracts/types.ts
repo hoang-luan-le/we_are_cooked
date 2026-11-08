@@ -42,6 +42,7 @@ export interface HandoffParts {
 export interface Handoff extends HandoffParts {
   by: string;
   night_pair: string[];                    // handles who acted before the handoff; they can't rate it
+  morning_pair: string[];                  // named by the night pair; only they rate (if empty: any other teammate)
   sim_clock: string;
   rating: HandoffRating | null;            // once rated, the note is locked
 }
@@ -51,7 +52,7 @@ export type ErrorCode =
   | "answer_first" | "already_rolled_back" | "pr_not_ready" | "not_allowed_now" | "unknown_action"
   | "unknown_panel" | "text_required" | "text_too_long" | "idempotency_conflict" | "debrief_not_ready"
   | "handoff_not_ready" | "handoff_incomplete" | "handoff_rated" | "not_night_pair" | "night_pair_cannot_rate"
-  | "no_handoff";
+  | "no_handoff" | "not_teammate" | "unknown_handle" | "not_morning_pair";
 export interface ApiError { code: ErrorCode; detail: string }        // auth/404/validation errors have only `detail`
 
 // ---- rubric (0/2/4 each, out of 20) ----
@@ -85,6 +86,7 @@ export interface IncidentState {
   status_updates: Note[];
   actions_taken: string[];                 // e.g. "answer", "open_panel:logs", "hint"
   allowed_actions: ActionName[];
+  teammates: string[];                     // who may act: starting teammates + the handoff's morning pair
   hint_calls: number;
   nudge: boolean;
   stakeholder_message: string | null;
@@ -114,7 +116,12 @@ export interface DanaFacts {
   rubric: RubricResult | null;
 }
 
+// ---- POST /api/incident/start -> 201 IncidentState (X-Demo-User only) ----
+// The caller is always a teammate. 422 unknown_handle if a teammate isn't a known handle.
+export interface StartIncidentRequest { level?: Level; teammates?: string[] }   // up to 3 others
+
 // ---- POST /api/incident/{id}/action ----
+// Only teammates (403 not_teammate). inc_demo's teammates are the whole DEMO_TEAM.
 // Header: X-Demo-User: <handle> (demo mode). The relay key is refused here (403).
 // 409 = not allowed now (or key reused for a different request), 422 = bad input; both are ApiError.
 export interface ActionRequest {
@@ -138,7 +145,9 @@ export interface DemoResetRequest { level?: Level }                    // return
 // ---- handoff routes (X-Demo-User only; the relay key gets 403) ----
 // POST /api/incident/{id}/handoff -> IncidentState. 409 until phase is stabilized; the night
 //   pair may edit until it's rated. Phase becomes "handed_off".
-export type HandoffRequest = HandoffParts;                             // each 1-1000 chars
+export interface HandoffRequest extends HandoffParts {                // each part 1-1000 chars
+  morning_pair?: string[];                 // up to 4 handles; they may act and rate. Editing replaces it.
+}
 // GET /api/incident/{id}/handoff -> Handoff (404 if none yet)
 // POST /api/incident/{id}/handoff/rating -> Handoff. 409 if you're in night_pair.
 export interface HandoffRatingRequest { score: RatingScore; note?: string }                    // note: one line, max 200

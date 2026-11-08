@@ -1,18 +1,24 @@
-"""Incident routes: state, Dana's facts, actions, help calls."""
+"""Incident routes: start, state, Dana's facts, actions, help calls."""
 from __future__ import annotations
 
+import re
+import secrets
 from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request, status
 from pydantic import BaseModel, Field
 
 from auth import Actor, require_actor, require_member
+from config import Settings
 from engine.actions import MAX_TEXT_CHARS, apply_action, request_hint
-from engine.state import ACTIONS
+from engine.errors import invalid
+from engine.state import ACTIONS, LEVELS
 from engine.views import facts_view, state_view
 
-from .deps import Runtime, get_runtime, translate_store_errors
+from .deps import Runtime, get_runtime, require_teammate, translate_store_errors
 
+HANDLE_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}")   # pseudonymous handles only
+MAX_OTHER_TEAMMATES = 3   # a pair, plus room for a mentor or a third learner
 router = APIRouter(prefix="/api/incident", tags=["incident"])
 ActionName = Literal[ACTIONS]  # type: ignore[valid-type]
 
@@ -22,6 +28,31 @@ class ActionRequest(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=128)
     panel: str | None = Field(default=None, max_length=32)
     text: str | None = Field(default=None, max_length=MAX_TEXT_CHARS)
+
+
+class StartRequest(BaseModel):
+    level: Literal[LEVELS] = "explore"  # type: ignore[valid-type]
+    teammates: list[str] = Field(default_factory=list, max_length=MAX_OTHER_TEAMMATES)
+
+
+def known_handles(settings: Settings, handles: list[str]) -> tuple[str, ...]:
+    """Normalize handles; refuse anyone the API doesn't know (demo mode: the demo team)."""
+    cleaned = tuple(dict.fromkeys(h.strip().lower() for h in handles if h.strip()))
+    unknown = [h for h in cleaned if not HANDLE_PATTERN.fullmatch(h) or not settings.is_known_handle(h)]
+    if unknown:
+        raise invalid("unknown_handle", f"Unknown handle(s): {', '.join(unknown)}.")
+    return cleaned
+
+
+@router.post("/start", status_code=status.HTTP_201_CREATED)
+def start_incident(
+    body: StartRequest, request: Request, actor: Actor = Depends(require_member), rt: Runtime = Depends(get_runtime),
+) -> dict:
+    """A new incident from the 2:04 page. The caller is always a teammate."""
+    others = known_handles(request.app.state.settings, body.teammates)
+    incident_id = f"inc_{secrets.token_hex(4)}"
+    state, now = rt.store.create(incident_id, body.level, (actor.handle, *others))
+    return state_view(state, rt.scenario, now)
 
 
 @router.get("/{incident_id}")
@@ -48,6 +79,7 @@ def post_action(
     fingerprint = (actor.handle, body.action, body.panel, body.text)
 
     def change(state, now):
+        require_teammate(state, actor)
         new_state, message = apply_action(
             state, rt.scenario, action=body.action, actor=actor.handle, now=now, panel=body.panel, text=body.text,
         )
@@ -64,6 +96,7 @@ def post_action(
 def post_hint(incident_id: str, actor: Actor = Depends(require_actor), rt: Runtime = Depends(get_runtime)) -> dict:
     """One help call. Counts once and clears the nudge. The relay calls this; the frontend does not."""
     def change(state, now):
+        require_teammate(state, actor)
         new_state, hint = request_hint(state, rt.scenario, now)
         return new_state, {**hint, "hint_calls": new_state.hint_calls}
 

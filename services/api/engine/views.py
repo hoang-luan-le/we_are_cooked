@@ -48,6 +48,7 @@ def handoff_view(state: IncidentState, scenario: Scenario) -> dict | None:
     return {
         "by": handoff.by,
         "night_pair": list(handoff.night_pair),
+        "morning_pair": list(handoff.morning_pair),
         "sim_clock": _clock(state, scenario, handoff.at),
         **{part: getattr(handoff, part) for part in HANDOFF_PARTS},
         "rating": None if rating is None else {
@@ -74,6 +75,7 @@ def state_view(state: IncidentState, scenario: Scenario, now: float) -> dict:
         "status_updates": _notes(state, scenario, state.status_updates),
         "actions_taken": list(state.actions_taken),
         "allowed_actions": list(allowed_actions(state)),
+        "teammates": list(state.all_teammates),
         "hint_calls": state.hint_calls,
         "nudge": is_nudging(state, scenario, now),
         "stakeholder_message": stakeholder_message(state, scenario, now),

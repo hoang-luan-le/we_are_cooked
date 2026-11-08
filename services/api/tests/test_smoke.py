@@ -6,7 +6,9 @@ Uses the real scenario/scenario.json; expected values are read from it, not copi
 from __future__ import annotations
 
 import itertools
+from contextlib import closing
 import json
+import sqlite3
 import sys
 import tempfile
 import traceback
@@ -19,7 +21,8 @@ if str(API_DIR) not in sys.path:
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from config import DEFAULT_SCENARIO_PATH, Settings  # noqa: E402
+from config import DEFAULT_DEMO_TEAM, DEFAULT_SCENARIO_PATH, Settings  # noqa: E402
+from engine.snapshot import from_snapshot, to_snapshot  # noqa: E402
 from engine.state import PullRequest  # noqa: E402
 from main import create_app  # noqa: E402
 from scenario_loader import ScenarioError, load_scenario  # noqa: E402
@@ -62,9 +65,12 @@ class Harness:
 
     _keys = itertools.count()
 
-    def __init__(self, scenario_path: Path = DEFAULT_SCENARIO_PATH, auth0_domain: str = "") -> None:
-        self.clock = FakeClock()
-        settings = Settings(scenario_path=scenario_path, internal_key=INTERNAL_KEY, auth0_domain=auth0_domain)
+    def __init__(self, scenario_path: Path = DEFAULT_SCENARIO_PATH, auth0_domain: str = "",
+                 sqlite_path: str = ":memory:", database_url: str = "", clock: FakeClock | None = None,
+                 demo_team: tuple[str, ...] = DEFAULT_DEMO_TEAM) -> None:
+        self.clock = clock or FakeClock()
+        settings = Settings(scenario_path=scenario_path, internal_key=INTERNAL_KEY, auth0_domain=auth0_domain,
+                            sqlite_path=sqlite_path, database_url=database_url, demo_team=demo_team)
         self.app = create_app(settings, clock=self.clock)
         self.client = TestClient(self.app)
 
@@ -93,10 +99,10 @@ class Harness:
     def hint(self, headers: dict = RELAY):
         return self.client.post(f"/api/incident/{INC}/hint", headers=headers)
 
-    def set_pr(self, **fields) -> None:
+    def set_pr(self, incident_id: str = INC, **fields) -> None:
         """Stand-in for PR verify (GitHub), which is not built yet."""
         pr = PullRequest(**{"number": 7, "merged": True, "ci_passed": True, "substantive_review": True, **fields})
-        self.app.state.runtime.store.change(INC, lambda s, now: (replace(s, pr=pr), None))
+        self.app.state.runtime.store.change(incident_id, lambda s, now: (replace(s, pr=pr), None))
 
     def hand_over(self, score: int = 5) -> None:
         """Night pair (duy) writes the handoff; morning pair (tung) rates it."""
@@ -656,6 +662,188 @@ def test_cohorts_are_members_only():
 def test_cohorts_work_even_without_a_scenario():
     with Harness(scenario_path=API_DIR / "tests" / "no-such-scenario.json") as h:
         assert _create_cohort(h).status_code == 201
+
+
+# ---------- starting incidents and teammates ----------
+
+def _start(h: Harness, teammates: list[str], headers: dict = TEAM, level: str = "practice"):
+    return h.client.post("/api/incident/start", json={"level": level, "teammates": teammates}, headers=headers)
+
+
+def _act_on(h: Harness, incident_id: str, action: str, headers: dict = TEAM, **body):
+    payload = {"action": action, "idempotency_key": f"k{next(Harness._keys)}", **body}
+    return h.client.post(f"/api/incident/{incident_id}/action", json=payload, headers=headers)
+
+
+def test_start_an_incident_with_teammates():
+    with Harness() as h:
+        response = _start(h, [" Luan "])
+        assert response.status_code == 201, response.text
+        state = response.json()
+        assert state["incident_id"].startswith("inc_") and state["incident_id"] != INC
+        assert state["teammates"] == ["duy", "luan"] and state["phase"] == "paged" and state["level"] == "practice"
+        assert _start(h, ["stranger"]).json()["code"] == "unknown_handle"
+        assert _start(h, [], headers=RELAY).status_code == 403
+        assert _start(h, [], headers={}).status_code == 401
+        assert _start(h, ["tung", "luan", "demo-a", "demo-b"]).status_code == 422  # more than 3 others
+
+
+def test_only_teammates_act_but_anyone_can_read():
+    with Harness() as h:
+        incident_id = _start(h, ["luan"]).json()["incident_id"]
+        outsider = _act_on(h, incident_id, "answer", headers=MORNING)
+        assert outsider.status_code == 403 and outsider.json()["code"] == "not_teammate"
+        assert h.client.post(f"/api/incident/{incident_id}/hint", headers=MORNING).status_code == 403
+        assert h.client.post(f"/api/incident/{incident_id}/hint", headers=RELAY).status_code == 200
+        assert _act_on(h, incident_id, "answer", headers={"X-Demo-User": "luan"}).status_code == 200
+        assert h.client.get(f"/api/incident/{incident_id}/facts").status_code == 200
+
+
+def test_morning_pair_joins_at_handoff():
+    with Harness() as h:
+        incident_id = _start(h, []).json()["incident_id"]
+        for action, extra in (("answer", {}), ("open_panel", {"panel": "logs"}), ("rollback", {})):
+            assert _act_on(h, incident_id, action, **extra).status_code == 200
+        h.clock.advance(SPEC.metrics.recovery_s)
+        rate = lambda headers: h.client.post(  # noqa: E731
+            f"/api/incident/{incident_id}/handoff/rating", json={"score": 5}, headers=headers)
+        assert _act_on(h, incident_id, "open_panel", headers=MORNING, panel="logs").status_code == 403
+        note = {**HANDOFF, "morning_pair": ["tung", "Demo-A"]}
+        state = h.client.post(f"/api/incident/{incident_id}/handoff", json=note, headers=TEAM).json()
+        assert state["teammates"] == ["duy", "tung", "demo-a"] and state["handoff"]["night_pair"] == ["duy"]
+        assert rate({"X-Demo-User": "luan"}).json()["code"] == "not_teammate"
+        assert rate(MORNING).status_code == 200
+        h.set_pr(incident_id)
+        assert _act_on(h, incident_id, "deploy_fix", headers=MORNING).status_code == 200
+        bad = {**HANDOFF, "morning_pair": ["nobody"]}
+        assert h.client.post(f"/api/incident/{incident_id}/handoff", json=bad, headers=TEAM).status_code == 422
+
+
+def test_only_the_named_morning_pair_rates():
+    with Harness() as h:
+        h.night_shift()
+        _post_handoff(h, {**HANDOFF, "morning_pair": ["tung"]})
+        other = _rate(h, headers=OTHER)  # demo-a: a teammate on inc_demo, but not the morning pair
+        assert other.status_code == 409 and other.json()["code"] == "not_morning_pair"
+        assert _rate(h).status_code == 200
+
+
+def test_editing_the_handoff_replaces_the_morning_pair():
+    with Harness() as h:
+        incident_id = _start(h, []).json()["incident_id"]
+        for action in ("answer", "rollback"):
+            _act_on(h, incident_id, action)
+        h.clock.advance(SPEC.metrics.recovery_s)
+        post = lambda pair: h.client.post(  # noqa: E731
+            f"/api/incident/{incident_id}/handoff", json={**HANDOFF, "morning_pair": pair}, headers=TEAM)
+        assert post(["tung"]).json()["teammates"] == ["duy", "tung"]
+        state = post(["demo-a"]).json()
+        assert state["teammates"] == ["duy", "demo-a"] and state["handoff"]["morning_pair"] == ["demo-a"]
+        assert _act_on(h, incident_id, "open_panel", headers=MORNING, panel="logs").json()["code"] == "not_teammate"
+        assert post(["<b>tung</b>"]).json()["code"] == "unknown_handle"
+
+
+def test_outsiders_learn_nothing_about_handles_from_the_handoff():
+    with Harness() as h:
+        incident_id = _start(h, []).json()["incident_id"]
+        response = h.client.post(f"/api/incident/{incident_id}/handoff",
+                                 json={**HANDOFF, "morning_pair": ["nobody"]}, headers=MORNING)
+        assert response.status_code == 403 and response.json()["code"] == "not_teammate"
+
+
+# ---------- persistence ----------
+
+def _db_path() -> str:
+    handle = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    handle.close()
+    return handle.name
+
+
+def test_everything_survives_a_restart():
+    path, clock = _db_path(), FakeClock()
+    try:
+        with Harness(sqlite_path=path, clock=clock) as h:
+            h.night_shift()
+            h.hand_over()
+            started = _start(h, ["luan"]).json()["incident_id"]
+            cohort = _create_cohort(h).json()
+            h.client.post("/api/cohorts/join", json={"join_code": cohort["join_code"]}, headers=MORNING)
+            before = h.state()
+        with Harness(sqlite_path=path, clock=clock) as h:  # same database, new process
+            after = h.state()
+            assert after == before  # inc_demo was loaded, not recreated
+            assert h.client.get(f"/api/incident/{started}").json()["teammates"] == ["duy", "luan"]
+            members = h.client.get(f"/api/cohorts/{cohort['id']}", headers=MORNING).json()["members"]
+            assert members == [{"handle": "duy"}, {"handle": "tung"}]
+            joined = h.client.post("/api/cohorts/join", json={"join_code": cohort["join_code"]}, headers=OTHER)
+            assert joined.status_code == 200
+            assert h.client.get("/health").json()["database"] == {"kind": "sqlite", "persistent": True,
+                                                                  "save_failures": 0}
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_snapshot_round_trip_keeps_every_field():
+    with Harness() as h:
+        h.night_shift()
+        h.hand_over()
+        h.set_pr()
+        h.ok("deploy_fix", headers=MORNING)
+        h.client.post("/api/debrief", json={"incident_id": INC, "answer": EXAMPLE_ANSWER}, headers=RELAY)
+        state, _ = h.app.state.runtime.store.get(INC)
+    assert from_snapshot(json.loads(json.dumps(to_snapshot(state)))) == state
+
+
+def test_a_bad_saved_incident_is_skipped_not_fatal():
+    path = _db_path()
+    try:
+        with Harness(sqlite_path=path):
+            pass
+        with closing(sqlite3.connect(path)) as conn, conn:
+            conn.execute("INSERT INTO incidents VALUES ('inc_bad', 'explore', '[]', '{\"v\": 99}', 0)")
+            conn.execute("INSERT INTO incidents VALUES ('inc_junk', 'explore', '[]', 'not json', 0)")
+        with Harness(sqlite_path=path) as h:
+            assert h.client.get("/health").status_code == 200
+            assert h.client.get("/api/incident/inc_bad").status_code == 404
+            assert h.state()["phase"] == "paged"
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_unopenable_database_runs_from_memory():
+    folder = tempfile.mkdtemp()  # a directory can't be opened as a database file
+    try:
+        with Harness(sqlite_path=folder) as h:
+            health = h.client.get("/health").json()
+            assert health["status"] == "ok" and health["database"]["persistent"] is False
+            h.ok("answer")
+    finally:
+        Path(folder).rmdir()
+
+
+def test_restart_refreshes_demo_teammates_but_keeps_progress():
+    path, clock = _db_path(), FakeClock()
+    try:
+        with Harness(sqlite_path=path, clock=clock) as h:
+            h.ok("answer")
+        with Harness(sqlite_path=path, clock=clock, demo_team=("duy", "maya-demo")) as h:
+            state = h.state()
+            assert state["teammates"] == ["duy", "maya-demo"] and state["actions_taken"] == ["answer"]
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_database_url_choices_fall_back_to_sqlite():
+    path = _db_path()
+    try:
+        with Harness(database_url=f"sqlite:///{path}") as h:
+            _create_cohort(h)
+        with closing(sqlite3.connect(path)) as conn, conn:
+            assert conn.execute("SELECT COUNT(*) FROM cohorts").fetchone()[0] == 1
+        with Harness(database_url="postgres://user:pw@tiger.example/db") as h:  # not supported yet
+            assert h.client.get("/health").json()["database"]["kind"] == "sqlite"
+    finally:
+        Path(path).unlink(missing_ok=True)
 
 
 # ---------- demo reset and voice mount ----------

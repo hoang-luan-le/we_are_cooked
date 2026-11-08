@@ -15,7 +15,10 @@ WRITE_PHASES = ("stabilized", "handed_off")
 LATE_WRITE_PHASES = ("fixed", "debriefed")
 
 
-def write_handoff(state: IncidentState, *, actor: str, parts: dict[str, str], now: float) -> IncidentState:
+def write_handoff(
+    state: IncidentState, *, actor: str, parts: dict[str, str], now: float, morning_pair: tuple[str, ...] = (),
+) -> IncidentState:
+    """The morning pair named here may act and is who rates the note (design doc, flow 3)."""
     current = state.handoff
     _check_can_write(state, current, actor)
     missing = [part for part in HANDOFF_PARTS if not parts.get(part, "").strip()]
@@ -23,9 +26,11 @@ def write_handoff(state: IncidentState, *, actor: str, parts: dict[str, str], no
         raise invalid("handoff_incomplete", f"The handoff needs all four parts; missing: {', '.join(missing)}.")
 
     night_pair = current.night_pair if current else state.actors
-    handoff = Handoff(by=actor, night_pair=night_pair, at=now, **{p: parts[p].strip() for p in HANDOFF_PARTS})
+    handoff = Handoff(by=actor, night_pair=night_pair, at=now, morning_pair=morning_pair,
+                      **{p: parts[p].strip() for p in HANDOFF_PARTS})
     phase = "handed_off" if state.phase in WRITE_PHASES else state.phase  # never move back from fixed
     first_write = ("handoff",) if current is None else ()
+    # Editing replaces the morning pair; `teammates` itself never grows (see IncidentState.all_teammates).
     return replace(state, handoff=handoff, phase=phase, actions_taken=state.actions_taken + first_write)
 
 
@@ -48,6 +53,9 @@ def rate_handoff(state: IncidentState, *, actor: str, score: int, note: str, now
         raise conflict("no_handoff", "There's no handoff to rate yet.")
     if actor in state.handoff.night_pair:
         raise conflict("night_pair_cannot_rate", "The morning pair rates the handoff, not the people who wrote it.")
+    # One pair doing both shifts names no morning pair; then any other teammate may rate (design doc fallback).
+    if state.handoff.morning_pair and actor not in state.handoff.morning_pair:
+        raise conflict("not_morning_pair", "Only the morning pair named in the handoff can rate it.")
     rating = HandoffRating(by=actor, score=score, note=note.strip(), at=now)
     return replace(
         state,

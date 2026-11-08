@@ -6,7 +6,9 @@ from typing import Callable, TypeVar
 
 from fastapi import HTTPException, Request
 
-from engine.errors import conflict
+from auth import Actor
+from engine.errors import ActionRejected, conflict
+from engine.state import IncidentState
 from scenario_loader import Scenario
 from store import IdempotencyConflict, IncidentStore, UnknownIncident
 
@@ -24,6 +26,14 @@ def get_runtime(request: Request) -> Runtime:
     if runtime is None:
         raise HTTPException(status_code=503, detail="Scenario not loaded. See GET /health.")
     return runtime
+
+
+def require_teammate(state: IncidentState, actor: Actor) -> None:
+    """Only teammates act on an incident (design doc). The relay key is allowed where the route allows it."""
+    if actor.internal:
+        return
+    if actor.handle not in state.all_teammates:
+        raise ActionRejected(403, "not_teammate", "Only teammates on this incident can do that.")
 
 
 def translate_store_errors(call: Callable[[], T], incident_id: str) -> T:
