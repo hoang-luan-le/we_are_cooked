@@ -6,9 +6,16 @@ import type { MetricSample } from "./fixture";
 
 export type NightAction =
   | { action: "answer" | "snooze" | "rollback" }
+  | { action: "share_finding" | "status_update"; text: string }
   | { action: "open_panel"; panel: "dashboard" | "logs" | "deploys" };
 
-export type NightSnapshot = { incident: IncidentState; samples: MetricSample[] };
+type NightIncident = Omit<IncidentState, "ringing"> & { ringing?: boolean };
+export type NightSnapshot = {
+  incident: NightIncident;
+  samples: MetricSample[];
+  receivedAt: number;
+  newFindingFrom?: number;
+};
 
 export function useNightApi(enabled: boolean, incidentId?: string) {
   const path = incidentId ? `/api/night?incident=${encodeURIComponent(incidentId)}` : "/api/night";
@@ -20,7 +27,8 @@ export function useNightApi(enabled: boolean, incidentId?: string) {
   const active = useRef<{ controller: AbortController; write: boolean }>(null);
   const keys = useRef(new Map<string, string>());
 
-  const show = useCallback((incident: IncidentState) => {
+  const show = useCallback((incident: NightIncident) => {
+    const receivedAt = Date.now();
     const sample = {
       time: incident.sim_clock,
       errorRate: incident.metrics.error_rate,
@@ -32,7 +40,10 @@ export function useNightApi(enabled: boolean, incidentId?: string) {
         last.ordersPerMinute === sample.ordersPerMinute;
       const reset = previous?.incident.phase !== "paged" && incident.phase === "paged";
       const samples = reset ? [sample] : same && previous ? previous.samples : [...(previous?.samples ?? []), sample].slice(-7);
-      return { incident, samples };
+      const oldCount = previous?.incident.findings.length;
+      const newFindingFrom = reset || oldCount === undefined || incident.findings.length < oldCount ? undefined
+        : incident.findings.length > oldCount ? oldCount : previous?.newFindingFrom;
+      return { incident, samples, receivedAt, newFindingFrom };
     });
     setReadError(false);
   }, []);
@@ -44,7 +55,7 @@ export function useNightApi(enabled: boolean, incidentId?: string) {
     try {
       const response = await fetch(path, { cache: "no-store", signal: controller.signal });
       if (!response.ok) throw new Error("Incident unavailable");
-      const incident: IncidentState = await response.json();
+      const incident: NightIncident = await response.json();
       if (!controller.signal.aborted) show(incident);
     } catch {
       if (!controller.signal.aborted) setReadError(true);
@@ -70,10 +81,14 @@ export function useNightApi(enabled: boolean, incidentId?: string) {
     const controller = new AbortController();
     active.current = { controller, write: true };
     setPending(true);
-    setActionError("");
-    setRetryAction(undefined);
+    const isNote = "text" in intent;
+    if (!isNote) {
+      setActionError("");
+      setRetryAction(undefined);
+    }
 
-    const actionName = intent.action === "open_panel" ? `open_panel:${intent.panel}` : intent.action;
+    const actionName = intent.action === "open_panel" ? JSON.stringify([intent.action, intent.panel])
+      : isNote ? JSON.stringify([intent.action, intent.text]) : intent.action;
     const previousKey = keys.current.get(actionName);
     const idempotencyKey = previousKey ?? crypto.randomUUID();
     keys.current.set(actionName, idempotencyKey);
@@ -89,7 +104,7 @@ export function useNightApi(enabled: boolean, incidentId?: string) {
       if (!response.ok) {
         keys.current.delete(actionName);
         refresh = true;
-        setActionError(response.status === 409
+        if (!isNote) setActionError(response.status === 409
           ? "The incident changed before this action was accepted. Check the current state."
           : "The API did not accept this action. Check the demo member configuration.");
         return false;
@@ -104,8 +119,10 @@ export function useNightApi(enabled: boolean, incidentId?: string) {
     } catch {
       if (!controller.signal.aborted) {
         refresh = true;
-        setActionError("The API did not confirm this action. Check the incident or retry the same request.");
-        setRetryAction(intent);
+        if (!isNote) {
+          setActionError("The API did not confirm this action. Check the incident or retry the same request.");
+          setRetryAction(intent);
+        }
       }
       return false;
     } finally {

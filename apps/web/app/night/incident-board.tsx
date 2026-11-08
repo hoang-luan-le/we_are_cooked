@@ -116,7 +116,7 @@ function recoveryStep(startedAt: number) {
   return RECOVERY.length;
 }
 
-export function IncidentBoard({ heading, snapshot, pending, finalCaption, onAction, initialRollbackAt = null, onFixtureRollback }: {
+export function IncidentBoard({ heading, snapshot, pending, finalCaption, onAction, initialRollbackAt = null, onFixtureRollback, teamMode = false }: {
   heading: RefObject<HTMLHeadingElement | null>;
   snapshot?: NightSnapshot;
   pending: boolean;
@@ -124,6 +124,7 @@ export function IncidentBoard({ heading, snapshot, pending, finalCaption, onActi
   onAction: (intent: NightAction) => Promise<boolean>;
   initialRollbackAt?: number | null;
   onFixtureRollback?: (startedAt: number) => void;
+  teamMode?: boolean;
 }) {
   const [step, setStep] = useState(() => initialRollbackAt === null ? null : recoveryStep(initialRollbackAt));
   const rollbackStart = useRef(initialRollbackAt);
@@ -163,6 +164,9 @@ export function IncidentBoard({ heading, snapshot, pending, finalCaption, onActi
         <p className="eyebrow">Night 2D · ShopNorth</p>
         <h1 ref={heading} tabIndex={-1}>Checkout incident</h1>
         <p>Compare the checkout errors and deploy timing to decide which release to roll back.</p>
+        {snapshot ? <p className="muted">Last API response <time dateTime={new Date(snapshot.receivedAt).toISOString()}>
+          {new Date(snapshot.receivedAt).toLocaleTimeString()}
+        </time></p> : null}
         {finalCaption ? <p><strong>Dana</strong> {finalCaption}</p> : null}
       </section>
       <div className="board-grid">
@@ -230,11 +234,17 @@ export function IncidentBoard({ heading, snapshot, pending, finalCaption, onActi
         {incident && !incident.unlocked.includes("logs") ? (
           <LockedPanel title="Checkout logs" id="logs-title" pending={!canOpenPanel}
             onOpen={() => void openPanel("logs", "logs-title")} />
-        ) : <CheckoutLogs recovered={!incident && recovered} api={Boolean(incident)} />}
+        ) : teamMode ? <section className="panel" aria-labelledby="logs-title">
+          <h2 id="logs-title" tabIndex={-1}>Checkout logs</h2>
+          <p className="muted">The team API has not supplied role-specific log entries.</p>
+        </section> : <CheckoutLogs recovered={!incident && recovered} api={Boolean(incident)} />}
         {incident && !incident.unlocked.includes("deploys") ? (
           <LockedPanel title="Deploy history" id="deploys-title" pending={!canOpenPanel}
             onOpen={() => void openPanel("deploys", "deploys-title")} />
-        ) : <DeployHistory activeVersion={activeVersion} api={Boolean(incident)} />}
+        ) : teamMode ? <section className="panel" aria-labelledby="deploys-title">
+          <h2 id="deploys-title" tabIndex={-1}>Deploy history</h2>
+          <p className="muted">The team API has not supplied role-specific release details.</p>
+        </section> : <DeployHistory activeVersion={activeVersion} api={Boolean(incident)} />}
       </div>
     </>
   );

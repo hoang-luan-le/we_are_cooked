@@ -1,7 +1,7 @@
 "use client";
 
 import { type FormEvent, type RefObject, useCallback, useEffect, useRef, useState } from "react";
-import type { DanaMode, DanaServerMsg } from "../../../../packages/contracts/dana";
+import type { DanaCall, DanaMode, DanaServerMsg } from "../../../../packages/contracts/dana";
 import { connectDana, type DanaConnection, type DanaTarget } from "./dana-connection";
 import { BRIEFING, scriptedReply } from "./fixture";
 
@@ -90,11 +90,19 @@ export function useDanaBriefing(resumeFixture = false) {
   };
 }
 
-export function DanaBriefing({ heading, briefing, onContinue }: {
+const callLabels = {
+  briefing: { title: "Dana’s briefing", action: "Continue to dashboard" },
+  help: { title: "Dana help", action: "End help call" },
+  debrief: { title: "Dana debrief", action: "End debrief call" },
+} as const;
+
+export function DanaBriefing({ heading, briefing, onContinue, call = "briefing" }: {
   heading: RefObject<HTMLHeadingElement | null>;
   briefing: ReturnType<typeof useDanaBriefing>;
   onContinue: () => void;
+  call?: DanaCall;
 }) {
+  const labels = callLabels[call];
   const { mode, state, engine, captions, notice, muted, ready, canSend } = briefing;
   const [draft, setDraft] = useState("");
   const log = useRef<HTMLDivElement>(null);
@@ -114,9 +122,10 @@ export function DanaBriefing({ heading, briefing, onContinue }: {
   }
 
   return (
-    <section className="panel call-panel" aria-labelledby="briefing-title">
-      <p className="eyebrow">Call briefing · ShopNorth</p>
-      <h1 id="briefing-title" ref={heading} tabIndex={-1}>Dana’s briefing</h1>
+    <section className="panel call-panel" aria-labelledby="dana-call-title">
+      <p className="eyebrow">Dana call · ShopNorth</p>
+      {call === "briefing" ? <h1 id="dana-call-title" ref={heading} tabIndex={-1}>{labels.title}</h1>
+        : <h2 id="dana-call-title" ref={heading} tabIndex={-1}>{labels.title}</h2>}
       <p role="status" className="muted">{status}</p>
       {notice ? <p className="notice" role="alert">{notice}</p> : null}
       <div className="captions" ref={log} role="log" aria-label="Dana captions" onScroll={({ currentTarget }) => {
@@ -128,7 +137,7 @@ export function DanaBriefing({ heading, briefing, onContinue }: {
       </div>
       <form className="message-form" onSubmit={sendText}>
         <label>Message Dana
-          <input maxLength={500} autoComplete="off" value={draft} disabled={!canSend} onChange={event => setDraft(event.target.value)} />
+          <input maxLength={call === "debrief" ? 3000 : 500} autoComplete="off" value={draft} disabled={!canSend} onChange={event => setDraft(event.target.value)} />
         </label>
         <button disabled={!canSend || !draft.trim()}>Send</button>
       </form>
@@ -137,11 +146,11 @@ export function DanaBriefing({ heading, briefing, onContinue }: {
           {mode === "voice" && ready ? (
             <button aria-pressed={muted} onClick={briefing.toggleMute}>{muted ? "Unmute mic" : "Mute mic"}</button>
           ) : null}
-          {state === "failed" ? <button onClick={briefing.useFixture}>Use offline briefing</button> : null}
+          {state === "failed" && call === "briefing" ? <button onClick={briefing.useFixture}>Use offline briefing</button> : null}
           {state === "draining" ? <button onClick={briefing.resumePlayback}>Resume audio</button> : null}
         </div>
       ) : null}
-      <button className="primary" disabled={state === "draining"} onClick={onContinue}>Continue to dashboard <span aria-hidden="true">→</span></button>
+      <button className="primary" disabled={state === "draining"} onClick={onContinue}>{labels.action}</button>
     </section>
   );
 }

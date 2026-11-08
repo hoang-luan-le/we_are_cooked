@@ -1,6 +1,6 @@
 import {
   DANA_INPUT_RATE, DANA_OUTPUT_RATE, danaUrl,
-  type DanaClientMsg, type DanaMode, type DanaServerMsg, type Level,
+  type DanaCall, type DanaClientMsg, type DanaMode, type DanaServerMsg, type Level,
 } from "../../../../packages/contracts/dana";
 
 export type DanaConnection = {
@@ -12,6 +12,7 @@ export type DanaConnection = {
 
 export type DanaTarget = {
   base: string;
+  call?: DanaCall;
   mode: DanaMode;
   audio?: AudioContext;
   session?: { incidentId: string; user: string; level: Level };
@@ -34,7 +35,7 @@ export function prepareDanaAudio() {
 }
 
 // Adapted from services/api/voice/dev_page.html, with one lifecycle per call.
-export function connectDana({ base, mode, audio, session, onEvent, onDrain, onFailure }: Options): DanaConnection {
+export function connectDana({ base, call = "briefing", mode, audio, session, onEvent, onDrain, onFailure }: Options): DanaConnection {
   let socket: WebSocket | undefined;
   let mic: MediaStream | undefined;
   let capture: AudioWorkletNode | undefined;
@@ -134,7 +135,7 @@ export function connectDana({ base, mode, audio, session, onEvent, onDrain, onFa
     if (!ready && event.type !== "ready" && event.type !== "error" && event.type !== "call_ended") return;
     switch (event.type) {
       case "ready":
-        if (event.call !== "briefing" || event.mode !== mode) return;
+        if (event.call !== call || event.mode !== mode) return;
         if (!ready) {
           ready = true;
           window.clearTimeout(connectionTimer);
@@ -197,7 +198,7 @@ export function connectDana({ base, mode, audio, session, onEvent, onDrain, onFa
     }
     if (closed) return;
     const identity = session ?? { incidentId: "inc_demo", user: "dev", level: "explore" };
-    socket = new WebSocket(danaUrl(base, { call: "briefing", mode, ...identity }));
+    socket = new WebSocket(danaUrl(base, { call, mode, ...identity }));
     socket.binaryType = "arraybuffer";
     socket.onmessage = ({ data }: MessageEvent<string | ArrayBuffer>) => {
       if (closed || ended) return;

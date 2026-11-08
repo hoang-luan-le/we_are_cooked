@@ -52,3 +52,19 @@ Run the opt-in team entry browser check against a separate team backend instance
 ```sh
 NIGHT_TEST_TEAM_ENTRY=1 NIGHT_TEST_API_ORIGIN=http://127.0.0.1:8000 npm run test:browser -- tests/team-entry.spec.ts
 ```
+
+## Verify the shared Night board
+
+Use the team backend with its Dana facts URL set to that same loopback server. Run the local relay without proxy settings if a configured SOCKS proxy prevents its loopback requests. Build Next.js, then start the second web identity in another terminal.
+
+```sh
+NIGHT_FIXTURES=1 NIGHT_TEAM_ENTRY=1 NIGHT_API_ORIGIN=http://127.0.0.1:8000 NIGHT_DEMO_USER=demo-b npm run start -- --hostname 127.0.0.1 --port 3212
+```
+
+Run the pair walkthrough from the first terminal. Playwright starts its own web instance as demo-a.
+
+```sh
+NIGHT_TEST_TEAM_ENTRY=1 NIGHT_TEST_API_ORIGIN=http://127.0.0.1:8000 NIGHT_TEST_RELAY_BASE=ws://127.0.0.1:8000 NIGHT_TEST_PEER_ORIGIN=http://127.0.0.1:3212 npm run test:browser -- tests/night-board.spec.ts
+```
+
+A Help call starts in relay text. The relay selects its engine and counts the hint. Stakeholder nudges appear between calls. Debrief becomes available when the incident reports a deployed fix.

@@ -186,3 +186,23 @@ dialog::backdrop { background: rgb(20 31 57 / 45%); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; }
 }
+
+.dana-tools, .evidence-panel { margin-block: 16px; }
+.evidence-panel > * + * { margin-top: 12px; }
+.evidence-panel textarea {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid #a9b6cc;
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--surface);
+  font: inherit;
+  resize: vertical;
+}
+.evidence-list li { padding: 4px 6px; overflow-wrap: anywhere; }
+.evidence-list time { color: var(--muted); margin-inline-start: 4px; }
+.new-evidence { animation: evidence-highlight 2s ease-out; }
+@keyframes evidence-highlight { from { background: var(--canvas); } to { background: transparent; } }
+@media (prefers-reduced-motion: reduce) {
+  .new-evidence { animation: none; }
+}
