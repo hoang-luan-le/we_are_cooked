@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { teamEntryApi } from "../night/demo-config";
+import { redirect } from "next/navigation";
+import { currentSession, teamEntryApi } from "../night/demo-config";
 import { myIncidents } from "../session/session-api";
 
 export const dynamic = "force-dynamic";
@@ -8,6 +9,8 @@ const roleLabel = { night: "Night engineer", morning: "Morning engineer", teamma
 
 /** The hub: every incident you're on, what's waiting on you, and one Continue button each. */
 export default async function HomePage() {
+  const session = await currentSession();
+  if (session?.mode === "auth0" && (!session.signedIn || !session.user)) redirect(`/session?next=${encodeURIComponent("/home")}`);
   const config = await teamEntryApi();
   if (!config) return (
     <main className="landing"><h1>Your incidents are unavailable here</h1><Link className="button" href="/">Back to Incident Lab</Link></main>

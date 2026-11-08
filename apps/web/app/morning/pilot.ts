@@ -8,7 +8,7 @@ const GITHUB_REPO = /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 export async function loadPilot(config: DemoConfig): Promise<Pilot | undefined> {
   try {
     const response = await fetch(new URL("/api/pr/pilot", config.origin), {
-      headers: { "X-Demo-User": config.user }, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(6000),
+      headers: config.headers, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(6000),
     });
     if (!response.ok) return;
     const body: Partial<Pilot> & { repo?: string | null } = await response.json();

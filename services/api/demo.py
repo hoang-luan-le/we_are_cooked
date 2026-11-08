@@ -149,6 +149,9 @@ def _web_env(user: str) -> dict:
 
 
 def start(build: bool) -> int:
+    from dotenv import load_dotenv
+
+    load_dotenv(REPO_ROOT / ".env")  # the web app reads AUTH0_* / APP_BASE_URL from here too
     npx = shutil.which("npx") or shutil.which("npx.cmd")
     if npx is None:
         raise SystemExit("npx not found: install Node.js first.")

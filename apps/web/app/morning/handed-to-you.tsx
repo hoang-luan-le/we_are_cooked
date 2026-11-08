@@ -25,7 +25,7 @@ const roleLabel: Record<MyIncident["role"], string> = {
 async function loadMine(config: Config): Promise<MyIncident[] | undefined> {
   try {
     const response = await fetch(new URL("/api/me/incidents", config.origin), {
-      headers: { "X-Demo-User": config.user },
+      headers: config.headers,
       cache: "no-store",
       redirect: "error",
       signal: AbortSignal.timeout(6000),

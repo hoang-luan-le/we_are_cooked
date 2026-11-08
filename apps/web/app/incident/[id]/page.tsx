@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { teamEntryApi } from "../../night/demo-config";
+import { currentSession, teamEntryApi } from "../../night/demo-config";
 import { isTeamIncidentId } from "../../night/team-entry-contract";
 import { incident } from "../../session/session-api";
 
@@ -15,6 +15,8 @@ export default async function IncidentPage({ params, searchParams }: {
 }) {
   const { id } = await params;
   const { view } = await searchParams;
+  const session = await currentSession();
+  if (session?.mode === "auth0" && (!session.signedIn || !session.user)) redirect(`/session?next=${encodeURIComponent(`/incident/${id}`)}`);
   const config = await teamEntryApi();
   if (!config || !isTeamIncidentId(id)) return (
     <main className="landing"><h1>Incident unavailable</h1><Link className="button" href="/home">Your incidents</Link></main>

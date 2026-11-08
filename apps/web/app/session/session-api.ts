@@ -5,7 +5,7 @@ import type { DemoConfig } from "../night/demo-config";
 async function getJson<T>(config: DemoConfig, path: string): Promise<{ status: number; body?: T }> {
   try {
     const response = await fetch(new URL(path, config.origin), {
-      headers: { "X-Demo-User": config.user }, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(6000),
+      headers: config.headers, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(6000),
     });
     return { status: response.status, body: response.ok ? await response.json() as T : undefined };
   } catch {

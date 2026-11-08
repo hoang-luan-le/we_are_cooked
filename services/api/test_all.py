@@ -43,8 +43,13 @@ ISOLATED = {"SQLITE_PATH": ":memory:", "DATABASE_URL": "", "DEEPGRAM_API_KEY": "
 results: list[tuple[str, str, str]] = []   # (step, PASS/FAIL/SKIP, detail)
 
 
+# Tests run in demo mode: blank the Auth0 settings even when .env has them (Auth0 mode is tested on its own).
+NO_AUTH0 = {name: "" for name in ("AUTH0_DOMAIN", "AUTH0_AUDIENCE", "AUTH0_CLIENT_ID", "AUTH0_CLIENT_SECRET",
+                                  "AUTH0_SECRET", "APP_BASE_URL")}
+
+
 def env_with(**extra: str) -> dict:
-    return {**os.environ, "NEXT_TELEMETRY_DISABLED": "1", "PYTHONIOENCODING": "utf-8", **extra}
+    return {**os.environ, "NEXT_TELEMETRY_DISABLED": "1", "PYTHONIOENCODING": "utf-8", **NO_AUTH0, **extra}
 
 
 def record(step: str, status: str, detail: str = "") -> None:
