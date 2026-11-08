@@ -87,7 +87,9 @@ exists; whole demo team are teammates), or create one with
 - Live numbers: `state.metrics` (`error_rate` %, `orders_per_min`, `p95_ms`, plus `baseline`).
 - Chart: `GET /api/incident/{id}/metrics/history?window_s=900&step_s=10` → `samples[]` (`sim_time`
   "HH:MM:SS") and `events[]` (bad release, paged, restart, rollback, fix). It reaches back before the
-  page, so the 01:47 climb is visible.
+  page, so the 01:47 climb is visible. When `source` is `"tigerdata"`, show a small caption
+  "Live data: Tiger Data" (sponsor proof): those samples come from the TimescaleDB hypertable that
+  records every poll.
 - `state.loyalty_discounts` is `"on" | "off"`: show it as **text** ("Loyalty discounts: OFF"), not
   only a colour.
 - Opening a panel: send `act(id, me, "open_panel", { panel: "dashboard" })` once when it opens. This

@@ -133,6 +133,7 @@ class Database(_NetworkTables):
     """One SQLite connection guarded by a lock (FastAPI runs sync routes in a thread pool)."""
 
     kind = "sqlite"
+    supports_metrics = False   # the per-second hypertable is a Tiger Data feature
 
     def __init__(self, path: str) -> None:
         if path != MEMORY:
@@ -149,6 +150,10 @@ class Database(_NetworkTables):
         columns = {row[1] for row in self._conn.execute("PRAGMA table_info(users)")}
         if "public_evidence" not in columns:
             self._conn.execute("ALTER TABLE users ADD COLUMN public_evidence INTEGER NOT NULL DEFAULT 0")
+
+    @property
+    def persistent(self) -> bool:
+        return self.path != MEMORY
 
     def close(self) -> None:
         with self._lock:
@@ -210,12 +215,24 @@ class Database(_NetworkTables):
         ]
 
 
-def open_database(database_url: str, sqlite_path: str) -> Database:
-    """DATABASE_URL picks the database; empty or unsupported falls back to local SQLite."""
+def open_database(database_url: str, sqlite_path: str):
+    """DATABASE_URL picks the database: postgres:// = Tiger Data, sqlite:///path, empty = local SQLite.
+
+    If Tiger Data can't be reached, fall back to local SQLite: the demo never depends on the network.
+    """
     url = database_url.strip()
+    if url.startswith(("postgres://", "postgresql://")):
+        try:
+            from db_postgres import PostgresDatabase
+
+            database = PostgresDatabase(url)
+            logger.info("Using Tiger Data (Postgres + TimescaleDB)")
+            return database
+        except Exception as exc:  # psycopg.Error, DNS, TLS... anything: fall back, keep the demo alive
+            logger.error("Tiger Data unreachable (%s); falling back to SQLite at %s", type(exc).__name__, sqlite_path)
+            return Database(sqlite_path)
     if url.startswith("sqlite:///"):
         return Database(url.removeprefix("sqlite:///"))
     if url:
-        # Tiger Data (Postgres) support is the next step; never let the demo depend on it.
-        logger.warning("DATABASE_URL is set but only SQLite is supported so far; using %s", sqlite_path)
+        logger.warning("DATABASE_URL scheme not supported; using SQLite at %s", sqlite_path)
     return Database(sqlite_path)

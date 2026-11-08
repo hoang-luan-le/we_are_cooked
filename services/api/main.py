@@ -6,7 +6,6 @@ Run from services/api:  uvicorn main:app --reload --port 8000
 from __future__ import annotations
 
 import logging
-import sqlite3
 import time
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Callable
@@ -18,6 +17,8 @@ from fastapi.responses import JSONResponse
 from cohorts import CohortStore
 from config import Settings
 from db import MEMORY, Database, open_database
+from dberrors import DB_ERRORS
+from metrics_recorder import MetricsRecorder
 from engine.errors import ActionRejected
 from github_client import GitHubClient
 from accounts import AccountStore, Auth0Verifier
@@ -52,7 +53,7 @@ def _open_database_or_memory(settings: Settings) -> Database:
     """Never let the demo depend on the database: if it can't be opened, run from memory."""
     try:
         return open_database(settings.database_url, settings.sqlite_path)
-    except sqlite3.Error:
+    except DB_ERRORS:
         logger.exception("Could not open the database; running from memory, nothing will be saved")
         return Database(MEMORY)
 
@@ -100,6 +101,7 @@ def create_app(
         app.state.settings = resolved
         app.state.db = db
         app.state.cohorts = CohortStore(db, clock)  # independent of the scenario
+        app.state.metrics_recorder = MetricsRecorder(db) if db.supports_metrics else None
         app.state.network = NetworkStore(db, clock)
         app.state.checks = CheckStore(db, clock)
         app.state.accounts = AccountStore(db, clock)
@@ -110,6 +112,8 @@ def create_app(
         try:
             yield
         finally:
+            if app.state.metrics_recorder is not None:
+                app.state.metrics_recorder.close()
             db.close()
             if app.state.github is not None:
                 app.state.github.close()
@@ -133,8 +137,8 @@ def create_app(
     @app.get("/health")
     def health(request: Request) -> JSONResponse:
         runtime: Runtime | None = request.app.state.runtime
-        db: Database = request.app.state.db
-        database = {"kind": db.kind, "persistent": db.path != MEMORY,
+        db = request.app.state.db
+        database = {"kind": db.kind, "persistent": db.persistent,
                     "save_failures": runtime.store.save_failures if runtime else 0}
         if runtime is None:
             return JSONResponse(

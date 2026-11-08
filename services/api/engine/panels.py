@@ -134,21 +134,43 @@ def runbook(scenario: Scenario, name: str) -> dict | None:
 
 # ---------- metrics history ----------
 
-def metrics_history(state: IncidentState, scenario: Scenario, now: float, *, window_s: int, step_s: int) -> dict:
-    """Chart samples over the last `window_s` seconds (may reach back before the page) and events."""
-    window_s = max(step_s, min(window_s, MAX_HISTORY_WINDOW_S))
+def history_window(now: float, window_s: int, step_s: int) -> tuple[float, int, int]:
+    """(start, window_s, step_s) after clamping; shared by the route (Tiger Data query) and the engine."""
     step_s = max(step_s, MIN_HISTORY_STEP_S)
+    window_s = max(step_s, min(window_s, MAX_HISTORY_WINDOW_S))
+    return now - window_s, window_s, step_s
+
+
+def _rounded(values: dict) -> dict:
+    return {"error_rate": round(values["error_rate"], 1), "orders_per_min": int(round(values["orders_per_min"])),
+            "p95_ms": int(round(values["p95_ms"]))}
+
+
+def metrics_history(state: IncidentState, scenario: Scenario, now: float, *, window_s: int, step_s: int,
+                    stored: dict[int, dict] | None = None) -> dict:
+    """Chart samples over the last `window_s` seconds (may reach back before the page) and events.
+
+    `stored`: Tiger Data time_bucket averages keyed by bucket start (epoch seconds). A sample uses the
+    stored bucket when one exists from this run (after the page); otherwise the computed curve.
+    """
+    start, window_s, step_s = history_window(now, window_s, step_s)
     lead = bad_release_lead_s(scenario)
     page_at = scenario.spec.clock.page_at
+    stored = stored or {}
     samples = []
-    t = now - window_s
+    t = start
     while t <= now:
-        values = metrics_at(state, scenario.spec.metrics, t, bad_release_lead_s=lead)
-        samples.append({"sim_time": sim_time(page_at, t - state.paged_at), **values})
+        bucket = stored.get(int(t // step_s) * step_s) if t >= state.paged_at else None
+        if bucket is not None:
+            values, source = _rounded(bucket), "tigerdata"
+        else:
+            values, source = metrics_at(state, scenario.spec.metrics, t, bad_release_lead_s=lead), "computed"
+        samples.append({"sim_time": sim_time(page_at, t - state.paged_at), **values, "source": source})
         t += step_s
     events = [("bad release " + scenario.spec.releases.bad, state.paged_at - lead), ("paged", state.paged_at),
               ("restart", state.restart_at), ("rollback", state.rollback_at), ("fix deployed", state.fixed_at)]
     return {
+        "source": "tigerdata" if any(s["source"] == "tigerdata" for s in samples) else "computed",
         "samples": samples,
         "events": [{"label": label, "sim_time": sim_time(page_at, at - state.paged_at)}
                    for label, at in events if at is not None and now - window_s <= at <= now],

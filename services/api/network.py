@@ -8,10 +8,10 @@ Privacy (users may be minors, CLAUDE.md hard rule 6):
 from __future__ import annotations
 
 import logging
-import sqlite3
 import threading
 import time
 from dataclasses import dataclass, replace
+from dberrors import DB_ERRORS
 from typing import Callable
 
 logger = logging.getLogger("incident_lab.network")
@@ -86,5 +86,5 @@ class NetworkStore:
             return
         try:
             write(self._db)
-        except sqlite3.Error:
+        except DB_ERRORS:
             logger.exception("Could not save a network change")

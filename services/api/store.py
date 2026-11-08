@@ -7,9 +7,9 @@ Stored replies stay in memory only; after a restart a retried key is applied as 
 from __future__ import annotations
 
 import logging
-import sqlite3
 import threading
 from dataclasses import replace
+from dberrors import DB_ERRORS
 from typing import Callable, Hashable, TypeVar
 
 from engine.actions import settle
@@ -127,7 +127,7 @@ class IncidentStore:
             return
         try:
             self._db.save_incident(state.incident_id, state.level, state.teammates, to_snapshot(state), now)
-        except sqlite3.Error:
+        except DB_ERRORS:
             # The live demo keeps going from memory; /health reports the failures.
             self.save_failures += 1
             logger.exception("Could not save a snapshot of incident %s", state.incident_id)

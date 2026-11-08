@@ -26,7 +26,8 @@ python tests/test_smoke.py                 # must print ALL GOOD before you push
 | `scenario_loader.py` / `scenario_models.py` | Loads + validates `scenario/scenario.json`; splits off `answer_key` |
 | `engine/` | Pure functions over frozen state: actions, metrics, help ladder + nudge, rubric, response views |
 | `store.py` | Live incidents in memory, a snapshot saved after every change; idempotency keys |
-| `db.py` / `engine/snapshot.py` | SQLite tables `incidents`, `cohorts`, `cohort_members` (file in `data/`, gitignored) |
+| `db.py` / `db_postgres.py` / `engine/snapshot.py` | SQLite, or Tiger Data when `DATABASE_URL` is Postgres (same tables; falls back to SQLite if unreachable) |
+| `metrics_recorder.py` | One sample/second per polled incident into the `incident_metrics` hypertable; `/metrics/history` reads it with `time_bucket` |
 | `engine/panels.py` | Logs (deterministic per second), deploy history + diff, runbooks, metrics history |
 | `routes/` | `/logs`, `/deploys`, `/runbooks`, `/metrics/history`; `/api/incident/start`, `/api/incident/{id}`, `/facts`, `/action`, `/hint`, `/handoff` (+ `/rating`), `/api/debrief`, `/api/cohorts`, `/api/demo/reset` |
 | `github_client.py` / `routes/pr.py` | Read-only GitHub (PILOT_REPOS allowlist, 15 s cache): `POST /api/pr/verify`, real release diffs |
@@ -37,4 +38,4 @@ python tests/test_smoke.py                 # must print ALL GOOD before you push
 Contract: `packages/contracts/types.ts` and `dana-voice.md` §5.
 
 ## Not built yet
-Pushing the pilot repo `shopnorth-checkout` to GitHub (contents and tags ready locally), Tiger Data (Postgres) + metrics history, open-source issues (P1).
+Open-source issues (P1). Live Tiger Data check: `python tests/check_tigerdata.py`.
