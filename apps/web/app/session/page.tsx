@@ -13,14 +13,16 @@ const errors: Record<string, string> = {
   handle_taken: "That handle is taken. Try another.",
   bad_handle: "Use 1-32 lowercase letters, digits, - or _. No real names needed.",
   unavailable: "Couldn't save your handle. Check that the API is running and try again.",
+  signin_failed: "Sign-in didn't complete. Try again from this page (use the same address, 127.0.0.1, all the way).",
 };
 
 /** Demo mode: "Present as..." (one presenter can switch). Auth0 mode: sign in, then pick a handle once. */
 export default async function SessionPage({ searchParams }: {
-  searchParams: Promise<{ next?: string | string[]; error?: string | string[] }>;
+  searchParams: Promise<{ next?: string | string[]; error?: string | string[]; reason?: string | string[] }>;
 }) {
   const session = await currentSession();
-  const { next, error } = await searchParams;
+  const { next, error, reason } = await searchParams;
+  const reasonCode = typeof reason === "string" && /^[a-z_]{1,40}$/.test(reason) ? reason : undefined;
   const back = safeNext(next);
   if (!session) return (
     <main className="landing"><h1>Sign-in is unavailable here</h1><Link className="button" href="/">Back to Incident Lab</Link></main>
@@ -31,6 +33,9 @@ export default async function SessionPage({ searchParams }: {
       <main className="landing">
         <h1>Sign in</h1>
         <p>Sign in with Google to start or join an incident. Other people only ever see the handle you pick.</p>
+        {typeof error === "string" && errors[error] ? (
+          <p role="alert">{errors[error]}{reasonCode ? ` (${reasonCode})` : ""}</p>
+        ) : null}
         <a className="button primary" href={`/auth/login?returnTo=${encodeURIComponent(back)}`}>Sign in with Google</a>
       </main>
     );

@@ -1,4 +1,5 @@
 import { Auth0Client } from "@auth0/nextjs-auth0/server";
+import { NextResponse } from "next/server";
 
 /**
  * Auth0 sign-in (Google). Active only when every setting is present; otherwise the app stays in demo mode
@@ -14,6 +15,17 @@ export const auth0 = auth0Configured()
     // Ask for an access token for the Incident Lab API; the FastAPI backend verifies it (RS256, audience, issuer).
     authorizationParameters: { audience: process.env.AUTH0_AUDIENCE, scope: "openid profile email" },
     signInReturnToPath: "/home",
+    // Same as the SDK default, but a failed sign-in is logged (code + cause) and shown on /session.
+    onCallback: async (error, ctx) => {
+      const base = ctx.appBaseUrl ?? process.env.APP_BASE_URL ?? "http://127.0.0.1:3000";
+      if (error) {
+        const code = (error as { code?: string }).code ?? "unknown";
+        const cause = error.cause instanceof Error ? error.cause.message : "";
+        console.error(`Auth0 sign-in failed: ${code}: ${error.message}${cause ? ` (cause: ${cause})` : ""}`);
+        return NextResponse.redirect(new URL(`/session?error=signin_failed&reason=${encodeURIComponent(code)}`, base));
+      }
+      return NextResponse.redirect(new URL(ctx.returnTo || "/home", base));
+    },
   })
   : undefined;
 
