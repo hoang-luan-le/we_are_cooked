@@ -2,6 +2,7 @@
 
 import { type RefObject, useEffect, useRef, useState } from "react";
 import { DEPLOYS, HISTORY, LOGS, RECOVERY, RECOVERY_LOG, type MetricSample } from "./fixture";
+import { TeamDeploys, TeamLogs, TeamMetricHistory, TeamRunbooks } from "./night-panels";
 import type { NightAction, NightSnapshot } from "./use-night-api";
 
 const [currentDeploy, rollbackDeploy] = DEPLOYS;
@@ -116,7 +117,7 @@ function recoveryStep(startedAt: number) {
   return RECOVERY.length;
 }
 
-export function IncidentBoard({ heading, snapshot, pending, finalCaption, onAction, initialRollbackAt = null, onFixtureRollback }: {
+export function IncidentBoard({ heading, snapshot, pending, finalCaption, onAction, initialRollbackAt = null, onFixtureRollback, teamIncidentId }: {
   heading: RefObject<HTMLHeadingElement | null>;
   snapshot?: NightSnapshot;
   pending: boolean;
@@ -124,6 +125,7 @@ export function IncidentBoard({ heading, snapshot, pending, finalCaption, onActi
   onAction: (intent: NightAction) => Promise<boolean>;
   initialRollbackAt?: number | null;
   onFixtureRollback?: (startedAt: number) => void;
+  teamIncidentId?: string;
 }) {
   const [step, setStep] = useState(() => initialRollbackAt === null ? null : recoveryStep(initialRollbackAt));
   const rollbackStart = useRef(initialRollbackAt);
@@ -134,14 +136,14 @@ export function IncidentBoard({ heading, snapshot, pending, finalCaption, onActi
   const recovered = incident ? !recovering && incident.status !== "broken" : step === RECOVERY.length;
   const status = recovering ? "Recovering" : recovered ? "Recovered" : "Degraded";
   const canRollback = incident ? incident.allowed_actions.includes("rollback") && !pending : step === null;
-  const discounts = incident ? incident.loyalty_discounts === "on" : !recovered;
+  const discounts = incident ? incident.loyalty_discounts === "on" : step === null;
   const activeVersion = incident?.status === "fixed" ? "Fix deployed" :
-    (incident?.status === "rolled_back" || recovered) ? rollbackDeploy.version : currentDeploy.version;
+    (incident?.status === "rolled_back" || recovering || recovered) ? rollbackDeploy.version : currentDeploy.version;
   const samples = snapshot?.samples ?? [...HISTORY, ...RECOVERY.slice(0, step ?? 0)];
   const latest = samples[samples.length - 1];
   const canOpenPanel = !pending && incident?.allowed_actions.includes("open_panel");
 
-  async function openPanel(panel: "dashboard" | "logs" | "deploys", headingId: string) {
+  async function openPanel(panel: "dashboard" | "logs" | "deploys" | "runbook", headingId: string) {
     if (await onAction({ action: "open_panel", panel })) {
       window.requestAnimationFrame(() => document.getElementById(headingId)?.focus());
     }
@@ -163,6 +165,9 @@ export function IncidentBoard({ heading, snapshot, pending, finalCaption, onActi
         <p className="eyebrow">Night 2D · ShopNorth</p>
         <h1 ref={heading} tabIndex={-1}>Checkout incident</h1>
         <p>Compare the checkout errors and deploy timing to decide which release to roll back.</p>
+        {snapshot ? <p className="muted">Last API response <time dateTime={new Date(snapshot.receivedAt).toISOString()}>
+          {new Date(snapshot.receivedAt).toLocaleTimeString()}
+        </time></p> : null}
         {finalCaption ? <p><strong>Dana</strong> {finalCaption}</p> : null}
       </section>
       <div className="board-grid">
@@ -189,6 +194,7 @@ export function IncidentBoard({ heading, snapshot, pending, finalCaption, onActi
               ))}</tbody>
             </table>
           </details>
+          {teamIncidentId && incident ? <TeamMetricHistory incidentId={teamIncidentId} phase={incident.phase} /> : null}
         </section>
         )}
         <section className="panel" aria-labelledby="mitigation-title">
@@ -230,11 +236,17 @@ export function IncidentBoard({ heading, snapshot, pending, finalCaption, onActi
         {incident && !incident.unlocked.includes("logs") ? (
           <LockedPanel title="Checkout logs" id="logs-title" pending={!canOpenPanel}
             onOpen={() => void openPanel("logs", "logs-title")} />
-        ) : <CheckoutLogs recovered={!incident && recovered} api={Boolean(incident)} />}
+        ) : teamIncidentId ? <TeamLogs incidentId={teamIncidentId} /> : <CheckoutLogs recovered={!incident && recovered} api={Boolean(incident)} />}
         {incident && !incident.unlocked.includes("deploys") ? (
           <LockedPanel title="Deploy history" id="deploys-title" pending={!canOpenPanel}
             onOpen={() => void openPanel("deploys", "deploys-title")} />
-        ) : <DeployHistory activeVersion={activeVersion} api={Boolean(incident)} />}
+        ) : teamIncidentId && incident ? <TeamDeploys incidentId={teamIncidentId} status={incident.status} />
+          : <DeployHistory activeVersion={activeVersion} api={Boolean(incident)} />}
+        {teamIncidentId && incident ? (
+          incident.unlocked.includes("runbook") ? <TeamRunbooks incidentId={teamIncidentId} />
+            : <LockedPanel title="Runbooks" id="runbook-title" pending={!canOpenPanel}
+                onOpen={() => void openPanel("runbook", "runbook-title")} />
+        ) : null}
       </div>
     </>
   );

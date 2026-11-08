@@ -1,4 +1,6 @@
-export type CohortRoster = { id: string; name: string; members: { handle: string }[] };
+import type { Cohort } from "../../../../packages/contracts/types";
+
+export type CohortRoster = Pick<Cohort, "id" | "name" | "members">;
 
 export function isCohortId(value: unknown): value is string {
   return typeof value === "string" && /^coh_[a-f0-9]{8}$/.test(value);

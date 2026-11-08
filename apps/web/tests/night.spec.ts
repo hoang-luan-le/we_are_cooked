@@ -110,8 +110,21 @@ test("answers by text in one click, follows captions and reports engine changes"
     relay.send(JSON.stringify({ type: "caption", role: "dana", text: `Caption ${number}` }));
   }
   await expect(page.getByRole("status")).toContainText("text · Scripted (no AI)");
-  await expect(page.getByRole("log").getByText("Caption 20")).toBeInViewport();
-  await expect(page.getByRole("log")).toContainText("Test relay briefing");
+  const log = page.getByRole("log");
+  await expect(log.getByText("Caption 20")).toBeInViewport();
+  await log.evaluate(element => {
+    element.scrollTop = 0;
+    element.dispatchEvent(new Event("scroll"));
+  });
+  relay.send(JSON.stringify({ type: "caption", role: "dana", text: "Caption while reviewing" }));
+  await expect(log).toContainText("Caption while reviewing");
+  await expect(log.getByText("Test relay briefing")).toBeInViewport();
+  await log.evaluate(element => {
+    element.scrollTop = element.scrollHeight;
+    element.dispatchEvent(new Event("scroll"));
+  });
+  relay.send(JSON.stringify({ type: "caption", role: "dana", text: "Caption after returning to latest" }));
+  await expect(log.getByText("Caption after returning to latest")).toBeInViewport();
   expect(requests).toHaveLength(1);
   relay.send(JSON.stringify({ type: "caption", role: "dana", text: "Dana’s final text" }));
   relay.send(JSON.stringify({ type: "call_ended", reason: "done" }));
@@ -259,6 +272,34 @@ test("preserves the briefing and draft on a server-requested text fallback", asy
   await expect(page.getByRole("log")).toContainText("Voice caption");
   await expect(page.getByRole("log")).toContainText("Text continued");
   await expect(draft).toHaveValue("Unsent question");
+  await expect(draft).toBeFocused();
+  relays[1].send(JSON.stringify({ type: "error", code: "offline", message: "Text dropped", fallback: "none" }));
+  await page.getByRole("button", { name: "Use offline briefing" }).click();
+  await expect(page.getByRole("log")).toContainText("Voice caption");
+  await expect(page.getByRole("log")).toContainText("Text continued");
+  await expect(page.getByRole("log")).toContainText("Checkout is failing");
+  await expect(draft).toHaveValue("Unsent question");
   await expect(page.locator("html")).toHaveAttribute("data-mic-stopped", "yes");
   expect(relays).toHaveLength(2);
+});
+
+test("can skip suspended terminal audio and keeps the final caption", async ({ page }) => {
+  await installSyntheticMic(page);
+  let relay: WebSocketRoute | undefined;
+  await page.routeWebSocket("**/ws/voice?*", socket => {
+    relay = socket;
+    socket.send(JSON.stringify({ type: "ready", call: "briefing", mode: "voice", engine: "deepgram" }));
+  });
+  await answerDana(page, "voice");
+  await expect(page.getByText(/Dana relay · voice · Deepgram/)).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new Event("test:suspend-audio")));
+  await expect(page.locator("html")).toHaveAttribute("data-audio-state", "suspended");
+  relay!.send(Buffer.alloc(48_000));
+  relay!.send(JSON.stringify({ type: "caption", role: "dana", text: "Review the recent release." }));
+  relay!.send(JSON.stringify({ type: "call_ended", reason: "done" }));
+  await page.getByRole("button", { name: "Skip remaining audio" }).click();
+  await expect(page.getByRole("heading", { name: "Checkout incident" })).toBeFocused();
+  await expect(page.getByText("Review the recent release.", { exact: false })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("data-audio-state", "closed");
+  await expect(page.locator("html")).toHaveAttribute("data-audio-stops", "1");
 });

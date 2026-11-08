@@ -52,3 +52,45 @@ Run the opt-in team entry browser check against a separate team backend instance
 ```sh
 NIGHT_TEST_TEAM_ENTRY=1 NIGHT_TEST_API_ORIGIN=http://127.0.0.1:8000 npm run test:browser -- tests/team-entry.spec.ts
 ```
+
+## Verify the shared Night board
+
+Use the team backend at [`474623a`](https://github.com/hoang-luan-le/we_are_cooked/commit/474623ac2d5f6905714efc5012efe9c6066a320f) or a compatible commit with its Dana facts URL set to the same loopback server. Run the local relay without proxy settings if a configured SOCKS proxy prevents its loopback requests. Build Next.js, then start the second web identity in another terminal.
+
+```sh
+NIGHT_FIXTURES=1 NIGHT_TEAM_ENTRY=1 NIGHT_API_ORIGIN=http://127.0.0.1:8000 NIGHT_DEMO_USER=demo-b npm run start -- --hostname 127.0.0.1 --port 3212
+```
+
+Run the pair walkthrough from the first terminal. Playwright starts its own web instance as demo-a.
+
+```sh
+NIGHT_TEST_TEAM_ENTRY=1 NIGHT_TEST_API_ORIGIN=http://127.0.0.1:8000 NIGHT_TEST_RELAY_BASE=ws://127.0.0.1:8000 NIGHT_TEST_PEER_ORIGIN=http://127.0.0.1:3212 npm run test:browser -- tests/night-board.spec.ts
+```
+
+A Help call starts in relay text. The relay selects its engine and counts the hint. Stakeholder nudges appear between calls. Debrief becomes available when the incident reports a deployed fix.
+
+Team incidents load logs, deploys, metric history, and runbooks through the Next.js demo bridge after the corresponding panels are unlocked. The bridge checks the configured demo member against the incident. The deploy panel labels whether the backend returned a GitHub diff or its scenario fallback. The main metrics read continues to follow the incident snapshot during recovery.
+
+After recovery, the Night participants can save a four-part shift handoff. The other browser sees the note through its normal incident poll. The API controls who can save or edit it. The optional morning handles must already be known to the backend.
+
+## Verify Morning and the after-incident flow
+
+With team entry enabled, open the Night incident and save its four-part handoff after recovery. Select **Open Morning workspace**. A named Morning teammate can rate the handoff. Use a configured pilot-repo PR to verify CI, review and merge. The deploy action appears only when the backend allows it. The final rubric and mutual connection depend on the backend’s recorded debrief and private opt-in answers.
+
+The browser rehearsal uses the actual local FastAPI and Dana relay with deterministic GitHub responses. From the repository root, use the API environment with the dependencies in `services/api/requirements.txt`.
+
+```sh
+DANA_FACTS=http://127.0.0.1:3214 DEEPGRAM_API_KEY= python -m uvicorn morning_api:app --app-dir apps/web/tests/fixtures --host 127.0.0.1 --port 3214
+```
+
+Build Next.js from `apps/web` and start the second browser identity in a separate terminal.
+
+```sh
+NIGHT_FIXTURES=1 NIGHT_TEAM_ENTRY=1 NIGHT_API_ORIGIN=http://127.0.0.1:3214 NIGHT_DEMO_USER=demo-b MORNING_GITHUB_FIXTURE=1 npm run start -- --hostname 127.0.0.1 --port 3212
+```
+
+Run the Morning rehearsal. Playwright starts the demo-a web instance. The Morning board marks fixture GitHub evidence during this run.
+
+```sh
+NIGHT_TEST_MORNING=1 NIGHT_TEST_TEAM_ENTRY=1 NIGHT_TEST_API_ORIGIN=http://127.0.0.1:3214 NIGHT_TEST_RELAY_BASE=ws://127.0.0.1:3214 NIGHT_TEST_PEER_ORIGIN=http://127.0.0.1:3212 npm run test:browser -- tests/morning.spec.ts
+```

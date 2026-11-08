@@ -18,35 +18,75 @@ export function TeamEntry({ user, level }: { user: string; level: Level }) {
   const [teammates, setTeammates] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [resumeNotice, setResumeNotice] = useState("");
+  const [rosterRefresh, setRosterRefresh] = useState<{ id: string }>();
   const [saveError, setSaveError] = useState(false);
+  const rosterLookup = useRef<AbortController>(null);
   const submission = useRef<AbortController>(null);
+
+  useEffect(() => {
+    let savedIncident: string | null;
+    try {
+      savedIncident = localStorage.getItem(incidentKey);
+    } catch {
+      setSaveError(true);
+      return;
+    }
+    if (!isTeamIncidentId(savedIncident)) return;
+    const id = savedIncident;
+    const controller = new AbortController();
+    function showUnverifiedLink() {
+      if (controller.signal.aborted || submission.current) return;
+      setIncidentId(current => current ?? id);
+      setResumeNotice("The saved incident could not be checked. You can still try its link.");
+    }
+    void fetch(`/api/night?incident=${id}`, { signal: controller.signal, cache: "no-store" })
+      .then(response => {
+        if (controller.signal.aborted || submission.current) return;
+        if (response.ok) {
+          setIncidentId(current => current ?? id);
+        } else if (response.status === 404) {
+          if (localStorage.getItem(incidentKey) === savedIncident) {
+            localStorage.removeItem(incidentKey);
+            setResumeNotice("The saved incident is unavailable. Start a new incident to continue.");
+          }
+        } else {
+          showUnverifiedLink();
+        }
+      }).catch(showUnverifiedLink);
+    return () => controller.abort();
+  }, [incidentKey]);
 
   useEffect(() => {
     let savedCohort;
     try {
-      const savedIncident = localStorage.getItem(incidentKey);
-      if (isTeamIncidentId(savedIncident)) setIncidentId(savedIncident);
-      savedCohort = localStorage.getItem(cohortKey);
+      savedCohort = rosterRefresh?.id ?? localStorage.getItem(cohortKey);
     } catch {
       setSaveError(true);
+      return;
     }
     if (!isCohortId(savedCohort)) return;
     const controller = new AbortController();
-    void fetch(`${endpoint}?cohort=${savedCohort}`, { signal: controller.signal }).then(async response => {
-      if (controller.signal.aborted || submission.current) return;
+    rosterLookup.current = controller;
+    void fetch(`${endpoint}?cohort=${savedCohort}`, { signal: controller.signal, cache: "no-store" }).then(async response => {
+      if (controller.signal.aborted) return;
       if (response.status === 404) {
+        setCohort(undefined);
+        setTeammates([]);
         setError("The saved cohort is unavailable. Enter a current code to join.");
       } else if (response.ok) {
         const roster: CohortRoster = await response.json();
-        if (!controller.signal.aborted && !submission.current) setCohort(current => current ?? roster);
+        if (controller.signal.aborted) return;
+        setCohort(roster);
+        setTeammates(current => current.filter(handle => roster.members.some(member => member.handle === handle)));
       } else {
         setError("The roster could not be loaded. Enter your code to try again.");
       }
     }).catch(() => {
-      if (!controller.signal.aborted && !submission.current) setError("The roster could not be loaded. Enter your code to try again.");
+      if (!controller.signal.aborted) setError("The roster could not be loaded. Enter your code to try again.");
     });
     return () => controller.abort();
-  }, [cohortKey, incidentKey]);
+  }, [cohortKey, rosterRefresh]);
 
   useEffect(() => () => submission.current?.abort(), []);
 
@@ -62,6 +102,7 @@ export function TeamEntry({ user, level }: { user: string; level: Level }) {
 
   async function submit(body: { kind: "join"; code: string } | { kind: "start"; level: Level; teammates: string[] }) {
     if (submission.current) return;
+    if (body.kind === "join") rosterLookup.current?.abort();
     const controller = new AbortController();
     submission.current = controller;
     setBusy(true);
@@ -87,6 +128,7 @@ export function TeamEntry({ user, level }: { user: string; level: Level }) {
       } else {
         const { id } = await response.json();
         setIncidentId(id);
+        setResumeNotice("");
         if (remember(incidentKey, id)) {
           navigating = true;
           router.push(teamIncidentHref(id));
@@ -108,9 +150,10 @@ export function TeamEntry({ user, level }: { user: string; level: Level }) {
   return (
     <div className="entry-section">
       <p className="muted">Local team API · Signed in as demo member {user}</p>
-      {incidentId ? <Link className="button" href={teamIncidentHref(incidentId)}>Resume API incident</Link> : null}
-      <button className="primary" disabled={busy} onClick={() => void submit({ kind: "start", level, teammates: [] })}>
-        Start solo incident
+      {incidentId ? <Link className="button primary" href={teamIncidentHref(incidentId)}>Resume API incident</Link> : null}
+      {resumeNotice ? <p className="notice" role="status">{resumeNotice}</p> : null}
+      <button className={incidentId ? undefined : "primary"} disabled={busy} onClick={() => void submit({ kind: "start", level, teammates: [] })}>
+        {busy ? "Working…" : "Start solo incident"}
       </button>
       <form className="entry-section entry-join" onSubmit={event => {
         event.preventDefault();
@@ -142,6 +185,9 @@ export function TeamEntry({ user, level }: { user: string; level: Level }) {
               <span>{handle}</span>
             </label>
           ))}
+          <button type="button" onClick={() => { setError(""); setRosterRefresh({ id: cohort.id }); }}>
+            Refresh cohort roster
+          </button>
           <button disabled={!teammates.length} onClick={() => void submit({ kind: "start", level, teammates })}>
             Start with selected teammates
           </button>

@@ -22,7 +22,15 @@ test("joins a real cohort, starts a selected team, and resumes the same incident
   await page.getByRole("button", { name: "Join team cohort" }).click();
   await expect(page.getByRole("group", { name: "Night browser team members" })).toBeVisible();
   await page.reload();
-  await page.getByRole("checkbox", { name: "demo-b" }).check();
+  const teammate = page.getByRole("checkbox", { name: "demo-b" });
+  await teammate.check();
+  const anotherMember = await request.post(`${api}/api/cohorts/join`, {
+    headers: { "X-Demo-User": "luan" }, data: { join_code: cohort.join_code },
+  });
+  expect(anotherMember.ok()).toBe(true);
+  await page.getByRole("button", { name: "Refresh cohort roster" }).click();
+  await expect(page.getByRole("checkbox", { name: "luan" })).toBeVisible();
+  await expect(teammate).toBeChecked();
   await page.getByRole("radio", { name: /Challenge/ }).check();
   await page.getByRole("button", { name: "Start with selected teammates" }).click();
   await expect(page.getByRole("heading", { name: "Dana is calling." })).toBeVisible();
@@ -42,4 +50,17 @@ test("joins a real cohort, starts a selected team, and resumes the same incident
   const otherId = (await other.json()).incident_id;
   const outsider = await page.request.get(`/api/night?incident=${otherId}`);
   expect(outsider.status()).toBe(404);
+  const savedKey = "incident-lab.team-entry.v1.demo-a.incident";
+  await page.evaluate(({ savedKey, otherId }) => localStorage.setItem(savedKey, otherId), { savedKey, otherId });
+  await page.goto("/start");
+  await expect(page.getByText("The saved incident is unavailable.", { exact: false })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Resume API incident" })).toHaveCount(0);
+  expect(await page.evaluate(key => localStorage.getItem(key), savedKey)).toBeNull();
+
+  await page.evaluate(({ savedKey, id }) => localStorage.setItem(savedKey, id!), { savedKey, id });
+  await page.route("**/api/night?incident=*", route => route.fulfill({ status: 503 }));
+  await page.reload();
+  await expect(page.getByText("The saved incident could not be checked.", { exact: false })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Resume API incident" })).toBeVisible();
+  expect(await page.evaluate(key => localStorage.getItem(key), savedKey)).toBe(id);
 });
