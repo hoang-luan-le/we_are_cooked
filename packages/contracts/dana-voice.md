@@ -18,8 +18,10 @@ ws(s)://<API>/ws/voice?call=<briefing|help|debrief>&incident_id=<id>&user=<handl
 
 | Direction | Format |
 |---|---|
-| Browser → server | **Binary** frames, raw PCM 16-bit little-endian, mono, **24 000 Hz**, ~20–100 ms per frame |
-| Server → browser | **Binary** frames, same format. Play in order. |
+| Browser → server | **Binary** frames, raw PCM 16-bit little-endian, mono, **16 000 Hz**, ~100 ms per frame (the template's mic worklet does this) |
+| Server → browser | **Binary** frames, PCM 16-bit LE, mono, **24 000 Hz**. Play in order, gapless. |
+
+Working reference client: `services/api/voice/dev_page.html` (mic worklet, gapless playback, barge-in, text fallback). Port it into React.
 
 ## 3. JSON messages: server → browser
 
@@ -31,7 +33,7 @@ ws(s)://<API>/ws/voice?call=<briefing|help|debrief>&incident_id=<id>&user=<handl
 | `user_started_speaking` | — | **Stop Dana's audio right away** (user interrupted her) |
 | `dana_done_speaking` | — | Optional: enable the "Hang up" button highlight |
 | `checking` | `what` (e.g. `"logs"`) | Optional: show "Dana is checking the logs…" |
-| `call_ended` | `reason` (`done` \| `user_hung_up` \| `error`) | Close the call screen, go to the next step |
+| `call_ended` | `reason` (`done` \| `user_hung_up` \| `error`) | Let queued audio finish playing, then close the call screen |
 | `error` | `code`, `message`, `fallback` (`text` \| `none`) | If `fallback` is `text`, reconnect with `mode=text` |
 
 ## 4. JSON messages: browser → server
@@ -53,6 +55,9 @@ Dana calls `GET /api/incident/{id}/facts` before every answer about the incident
   "phase": "investigating",
   "sim_clock": "02:09",
   "impact": { "error_rate": 31.2, "orders_per_min": 290, "p95_ms": 1450 },
+  "dana_knows": [
+    { "topic": "changes tonight", "text": "The team shipped v2.14.0 at 1:47 a.m. I don't know what was in it." }
+  ],
   "unlocked": ["dashboard", "logs"],
   "facts": [
     { "source": "dashboard", "text": "Error rate jumped from 0.4% to 31% around 01:50" },
@@ -66,7 +71,9 @@ Dana calls `GET /api/incident/{id}/facts` before every answer about the incident
 }
 ```
 
-Rule: if a fact isn't in `facts`, Dana doesn't know it. The backend decides what's unlocked; Dana never sees the answer key.
+`dana_knows` = what Dana knows as the manager; she shares an item only when the learner asks about that topic ("what changed tonight?"). `facts` = what the learners have found.
+
+Rule: if it isn't in `dana_knows` or `facts`, Dana doesn't know it. The backend decides what's unlocked; Dana never sees the answer key.
 
 For the debrief, Dana also needs the backend's rubric score (`rubric`, filled once `phase` is `fixed`). Gemini writes feedback on top of it; it never changes the score.
 

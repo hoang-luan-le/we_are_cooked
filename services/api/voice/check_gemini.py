@@ -34,7 +34,7 @@ SETTINGS = {
             "functions": [{
                 "name": "get_incident_facts",
                 "description": "Facts about the current incident that the learner has unlocked.",
-                "parameters": {"type": "object", "properties": {}, "required": []},
+                "parameters": {"type": "object", "properties": {"topic": {"type": "string", "description": "What was asked about."}}},
             }],
         },
         "speak": {"provider": {"type": "deepgram", "model": "aura-2-thalia-en"}},

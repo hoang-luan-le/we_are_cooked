@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dana dev page</title>
+<style>
+  :root { --bg:#0e1116; --panel:#171b22; --text:#e6e9ef; --muted:#8b93a1; --accent:#ff6b5b; --ok:#3ecf8e; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 system-ui,sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:16px; }
+  h1 { font-size:18px; margin:0 0 4px } p.note { color:var(--muted); margin:0 0 16px; font-size:13px }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px }
+  select, input, button { font:inherit; background:var(--panel); color:var(--text); border:1px solid #2a303a; border-radius:8px; padding:8px 10px }
+  button { cursor:pointer } button.primary { background:var(--accent); border-color:var(--accent); color:#fff }
+  #status { color:var(--muted) } #status b { color:var(--ok) }
+  #log { background:var(--panel); border-radius:10px; padding:12px; height:50vh; overflow-y:auto }
+  .dana { margin:6px 0 } .dana::before { content:"Dana: "; color:var(--accent); font-weight:600 }
+  .you { margin:6px 0; color:#b8c4d6 } .you::before { content:"You: "; font-weight:600 }
+  .sys { margin:6px 0; color:var(--muted); font-size:13px; font-style:italic }
+  #typed { flex:1; min-width:200px }
+</style>
+</head>
+<body>
+<main>
+  <h1>Dana dev page</h1>
+  <p class="note">Phase 1 test page for the voice contract. Not the real UI (that's Tung's).</p>
+  <div class="row">
+    <label>Call <select id="call"><option>briefing</option><option>help</option><option>debrief</option></select></label>
+    <label>Level <select id="level"><option>explore</option><option>practice</option><option>challenge</option></select></label>
+    <label>Mode <select id="mode"><option>voice</option><option>text</option></select></label>
+    <button id="start" class="primary">Answer call</button>
+    <button id="mute" disabled>Mute</button>
+    <button id="hang" disabled>Hang up</button>
+  </div>
+  <div class="row"><span id="status">Idle</span></div>
+  <div id="log" aria-live="polite"></div>
+  <form class="row" id="form" style="margin-top:12px">
+    <input id="typed" placeholder="Type to Dana (works in voice and text mode)" autocomplete="off">
+    <button>Send</button>
+  </form>
+</main>
+<script>
+const INPUT_RATE = 16000, OUTPUT_RATE = 24000;
+const $ = (id) => document.getElementById(id);
+let ws, micCtx, micStream, playCtx, playHead = 0, sources = [], muted = false;
+
+function add(cls, text) { const d = document.createElement("div"); d.className = cls; d.textContent = text; $("log").appendChild(d); $("log").scrollTop = 1e9; }
+function status(t) { $("status").innerHTML = t; }
+
+const workletCode = `
+class Down extends AudioWorkletProcessor {
+  constructor() { super(); this.ratio = sampleRate / ${INPUT_RATE}; this.buf = []; this.pos = 0; }
+  process(inputs) {
+    const ch = inputs[0][0]; if (!ch) return true;
+    for (let i = 0; i < ch.length; i++) { this.pos += 1; if (this.pos >= this.ratio) { this.pos -= this.ratio; this.buf.push(ch[i]); } }
+    if (this.buf.length >= 1600) {
+      const out = new Int16Array(this.buf.length);
+      for (let i = 0; i < this.buf.length; i++) { const s = Math.max(-1, Math.min(1, this.buf[i])); out[i] = s < 0 ? s * 0x8000 : s * 0x7fff; }
+      this.port.postMessage(out.buffer, [out.buffer]); this.buf = [];
+    }
+    return true;
+  }
+}
+registerProcessor("down", Down);`;
+
+async function startMic() {
+  micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+  micCtx = new AudioContext();
+  await micCtx.audioWorklet.addModule(URL.createObjectURL(new Blob([workletCode], { type: "application/javascript" })));
+  const node = new AudioWorkletNode(micCtx, "down");
+  node.port.onmessage = (e) => { if (ws && ws.readyState === 1 && !muted) ws.send(e.data); };
+  micCtx.createMediaStreamSource(micStream).connect(node);
+}
+function stopMic() { micStream?.getTracks().forEach((t) => t.stop()); micCtx?.close(); micStream = micCtx = null; }
+
+function playChunk(buf) {
+  const pcm = new Int16Array(buf); if (!playCtx || !pcm.length) return;
+  const audio = playCtx.createBuffer(1, pcm.length, OUTPUT_RATE), ch = audio.getChannelData(0);
+  for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 0x8000;
+  const s = playCtx.createBufferSource(); s.buffer = audio; s.connect(playCtx.destination);
+  const now = playCtx.currentTime; if (playHead < now) playHead = now + 0.03;
+  s.start(playHead); playHead += audio.duration;
+  sources.push(s); s.onended = () => { sources = sources.filter((x) => x !== s); };
+}
+function stopPlayback() { sources.forEach((s) => { try { s.stop(); } catch {} }); sources = []; playHead = 0; }
+
+function onMsg(m) {
+  switch (m.type) {
+    case "ready": add("sys", `Connected (${m.call}, ${m.mode})`); break;
+    case "caption": add(m.role, m.text); break;
+    case "status": status(`Dana is <b>${m.state}</b>`); break;
+    case "user_started_speaking": stopPlayback(); break;
+    case "checking": add("sys", `Dana is checking ${m.what}...`); break;
+    case "error":
+      add("sys", `Error ${m.code}: ${m.message}`);
+      if (m.fallback === "text" && $("mode").value === "voice") { add("sys", "Switching to text mode."); $("mode").value = "text"; setTimeout(start, 300); }
+      break;
+    case "call_ended": add("sys", `Call ended (${m.reason})`); finish(); break;
+  }
+}
+
+async function start() {
+  if (ws && ws.readyState <= 1) return;
+  const mode = $("mode").value;
+  const q = new URLSearchParams({ call: $("call").value, level: $("level").value, mode, incident_id: "inc_demo", user: "dev" });
+  ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/voice?${q}`);
+  ws.binaryType = "arraybuffer";
+  ws.onmessage = (e) => (typeof e.data === "string" ? onMsg(JSON.parse(e.data)) : playChunk(e.data));
+  ws.onclose = () => finish();
+  if (mode === "voice") {
+    playCtx = playCtx || new AudioContext({ sampleRate: OUTPUT_RATE });
+    try { await startMic(); } catch { add("sys", "Mic blocked: switching to text mode."); ws.close(); $("mode").value = "text"; setTimeout(start, 300); return; }
+  }
+  $("start").disabled = true; $("hang").disabled = false; $("mute").disabled = mode !== "voice";
+  status("Connecting...");
+}
+function finish() { stopMic(); $("start").disabled = false; $("hang").disabled = true; $("mute").disabled = true; muted = false; $("mute").textContent = "Mute"; status("Idle"); }
+
+$("start").onclick = start;
+$("hang").onclick = () => ws?.readyState === 1 && ws.send(JSON.stringify({ type: "hang_up" }));
+$("mute").onclick = () => { muted = !muted; $("mute").textContent = muted ? "Unmute" : "Mute"; ws?.send(JSON.stringify({ type: "mute", on: muted })); };
+$("form").onsubmit = (e) => {
+  e.preventDefault(); const t = $("typed").value.trim(); if (!t || ws?.readyState !== 1) return;
+  if ($("mode").value === "voice") { stopPlayback(); add("you", t); }  // in text mode the server echoes it
+  ws.send(JSON.stringify({ type: "text", text: t })); $("typed").value = "";
+};
+</script>
+</body>
+</html>

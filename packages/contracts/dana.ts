@@ -4,8 +4,9 @@ export type DanaCall = "briefing" | "help" | "debrief";
 export type Level = "explore" | "practice" | "challenge";
 export type DanaMode = "voice" | "text";
 
-// Audio: binary frames both ways, PCM16 LE, mono, 24000 Hz.
-export const DANA_SAMPLE_RATE = 24000;
+// Audio: binary frames, PCM16 LE, mono. Mic in at 16 kHz, Dana out at 24 kHz.
+export const DANA_INPUT_RATE = 16000;
+export const DANA_OUTPUT_RATE = 24000;
 
 export function danaUrl(apiWsBase: string, p: {
   call: DanaCall; incidentId: string; user: string; level: Level; mode: DanaMode;
