@@ -151,6 +151,13 @@ export function useNightApi(enabled: boolean, incidentId?: string) {
     }
   }
 
+  function dismissAnswerRetry() {
+    if (retryAction?.action !== "answer") return;
+    keys.current.delete("answer");
+    setRetryAction(undefined);
+    setActionError("");
+  }
+
   async function saveHandoff(draft: HandoffRequest) {
     if (!incidentId || active.current?.write) return 409;
     active.current?.controller.abort();
@@ -176,6 +183,6 @@ export function useNightApi(enabled: boolean, incidentId?: string) {
 
   return {
     snapshot, refresh, readError: Boolean(readFailure), accessLost: readFailure === "access",
-    pending, actionError, retryAction, act, saveHandoff,
+    pending, actionError, retryAction, act, dismissAnswerRetry, saveHandoff,
   };
 }

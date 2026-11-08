@@ -1,4 +1,57 @@
 STATUS: READY_FOR_REVIEW
+COMMAND_ID: 05-QA-QUALITY-01
+
+# Phase 05 QA readiness review
+
+**92/100 for local 2D P0 readiness.** [PR #5](https://github.com/thanhtungnguyen-dev/we_are_cooked/pull/5) merged the earlier Phase 05 Resume fix and Phase 04 Morning fixes into [ceb1e3a](https://github.com/thanhtungnguyen-dev/we_are_cooked/commit/ceb1e3a6786e15211b7b0851c3d1bda6dd0b6164), the base for this follow-up.
+
+## Reproduction and fixes
+
+| Before the fix | After the fix | Browser evidence |
+| --- | --- | --- |
+| Open entry in a second tab. Start a replacement incident in the first tab. The second tab continues to link to the original incident. | [TeamEntry](../apps/web/app/start/team-entry.tsx) listens for the member's saved-ID changes and revalidates the replacement. An obsolete link is hidden while the replacement loads. Clearing storage removes Resume. | [Team entry tests](../apps/web/tests/team-entry.spec.ts) use two tabs, a delayed read and real local API incidents. |
+| Make the saved-incident GET return 401 or 403. Resume still appears with the temporary-outage message. | A denied read hides Resume. Storage cleanup applies only to the ID that was checked. A blocked storage removal still leaves Resume hidden. | Both responses are injected at the bridge boundary. The 403 test also blocks removal. The earlier 503 test still preserves a valid fallback link. |
+| Let the server accept Answer, drop the acknowledgement, and choose Open incident without briefing. Retry remains visible on the board and can reopen the call. | [NightRun](../apps/web/app/night/night-run.tsx) dismisses the local Answer retry when the player skips. [The incident hook](../apps/web/app/night/use-night-api.ts) removes its retry key and error. | [Night API tests](../apps/web/tests/night-api.spec.ts) confirm a single Answer, no relay socket, no stale Retry, and focus on the board heading. The separate retry path still reuses its original key. |
+
+All four new test cases failed against their pre-fix build and passed with the fixes. The follow-up reuses existing routes, browser fixtures, and UI components.
+
+## Morning fixture relay authentication
+
+The [Morning API fixture](../apps/web/tests/fixtures/morning_api.py) now gives FastAPI the same resolved `INTERNAL_KEY` used by Dana. Importing all environment settings would also pick up authentication and persistence settings. The fixture uses demo identities, in-memory SQLite, and deterministic GitHub responses. A synthetic key reproduced the original 403. The Morning suite passed with that key, the debrief walkthrough also passed with a blank key, and a wrong key still returned 403.
+
+## React and request order
+
+The TeamEntry effect subscribes to storage changes for the configured member and revalidates on restoration from the browser back-forward cache. Its cleanup removes both listeners and aborts the pending request. The controller ref lets a successful Start or a later storage change cancel an older lookup immediately. The old lookup checks its signal before updating state. Join can proceed concurrently because it writes a different storage key. Polling storage would add repeated reads and network checks while the saved ID is unchanged.
+
+Skip is a local UI event available after the incident advances. It clears the abandoned retry before opening the board and sends no second Answer or relay request. The existing same-origin Next.js bridge and FastAPI incident state still determine membership and allowed actions.
+
+## Data structures
+
+TeamEntry keeps one member-scoped ID and one active validation controller. Storage replacement, cancellation, and equality checks take O(1) local work and space per event for bounded IDs. The network request dominates elapsed time. The hook deletes the Answer entry from the existing Map in expected O(1) time under typical hashing. Other unresolved action keys stay available for their own retry.
+
+## Readiness score
+
+The score uses the same weighting as Phases 01–04. The last eight points require live and full contract evidence.
+
+| Criterion | Weight | Earned | Evidence |
+| --- | ---: | ---: | --- |
+| Core player flow | 30 | 30 | Four isolated browser contexts completed landing, team entry, Night recovery, handoff, Morning review, deploy, debrief, private evidence, and mutual consent. |
+| Failure and resume | 22 | 22 | Cross-tab replacement and clearing, denied access, blocked storage, in-flight Join and Start, lost Answer retry or skip, reconnect, and denied microphone. |
+| Keyboard, touch and layout | 15 | 15 | Keyboard entry and chart filters, focus after skipping the briefing, touch rollback and consent, reduced motion, and 320, 390 and 1440 px Morning checks. |
+| Feedback and state clarity | 15 | 15 | Access denial and temporary outage copy, visible caption fallback, source labels, and preserved focus and chart geometry during filtering. |
+| Build and regression evidence | 10 | 10 | Build, typecheck, production opt-in gates, 27 browser tests, 84 backend smoke checks, and nine offline voice checks. The web package has no configured lint command. |
+| Live and full contract evidence | 8 | 0 | Authenticated staging, designated pilot PR and live GitHub, Deepgram with a device microphone, and Duy's role, revision, and deploy preconditions. |
+| **Total** | **100** | **92** | **Local 2D QA ready for review.** |
+
+The automated landing-to-evidence rehearsal took 25.6 seconds on local SQLite with a GitHub fixture and Dana's scripted relay. The log filter held keyboard focus and completed in 68 ms in that run, with zero chart DOM mutations and unchanged chart dimensions and SVG points. Live Tiger Data was outside the local run.
+
+**Explain it back.** If another tab replaces saved incident A with B while A is being checked, which browser signal starts the replacement lookup and which condition blocks the late response for A?
+
+**Quick verification.** Follow the [web README](../apps/web/README.md) and run the TeamEntry browser suite against a local team backend. Delay the replacement GET and check that neither old nor unverified replacement links appear while it is pending.
+
+---
+
+STATUS: READY_FOR_REVIEW
 COMMAND_ID: 04-MORNING-QUALITY-01
 
 # Phase 04 Morning readiness review
