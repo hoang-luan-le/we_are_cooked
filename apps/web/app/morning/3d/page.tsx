@@ -2,6 +2,7 @@ import Link from "next/link";
 import "../../world/world.css";
 import { demoEnabled, devRelayBase, teamEntryApi } from "../../night/demo-config";
 import { isTeamIncidentId } from "../../night/team-entry-contract";
+import { HandedToYou } from "../handed-to-you";
 import { MorningWorld } from "./morning-world";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +13,7 @@ export default async function MorningWorldPage({ searchParams }: { searchParams:
   const forceFallback = no3d === "1";
   if (fixture === "1") return <MorningWorld forceFallback={forceFallback} />;
   const config = teamEntryApi();
+  if (config && !isTeamIncidentId(incident)) return <HandedToYou config={config} base="/morning/3d" />;
   if (!config || !isTeamIncidentId(incident)) {
     return <main className="landing"><h1>Morning office unavailable</h1><p>Open a team incident and complete the Night handoff to continue.</p>
       <Link className="button" href="/start">Back to simulation entry</Link></main>;

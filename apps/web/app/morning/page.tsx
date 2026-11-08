@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { devRelayBase, teamEntryApi } from "../night/demo-config";
 import { isTeamIncidentId } from "../night/team-entry-contract";
+import { HandedToYou } from "./handed-to-you";
 import { MorningWorkspace } from "./morning-workspace";
 
 export const dynamic = "force-dynamic";
@@ -8,6 +9,8 @@ export const dynamic = "force-dynamic";
 export default async function MorningPage({ searchParams }: { searchParams: Promise<{ incident?: string | string[] }> }) {
   const { incident } = await searchParams;
   const config = teamEntryApi();
+  // No incident chosen: show what has been handed to this person, one click away.
+  if (config && !isTeamIncidentId(incident)) return <HandedToYou config={config} base="/morning" />;
   if (!config || !isTeamIncidentId(incident)) return (
     <main className="landing">
       <h1>Morning workspace unavailable</h1>

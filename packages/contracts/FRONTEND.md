@@ -148,6 +148,7 @@ exists; whole demo team are teammates), or create one with
   { incident_id, to_user, work_again, note }`. Private: the reply never says what the other person
   answered.
 - Network: `GET /api/network` → cards only where **both** said yes; `contact` appears only here.
+- Your incidents: `GET /api/me/incidents` → `MyIncident[]` with your role and a plain-language `next_step`. `/morning` and `/morning/3d` without `?incident=` now list what was handed to you (auto-refreshing).
 - Profile: `GET /api/me`; `PATCH /api/me { contact?, github_login?, public_evidence? }`.
 - Evidence: `GET /api/me/evidence` (your own), `GET /api/evidence/{handle}` (only if they set
   `public_evidence: true`; 404 otherwise).

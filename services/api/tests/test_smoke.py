@@ -1247,6 +1247,37 @@ def test_recorder_writes_one_sample_per_second_off_the_request_path():
     assert [row[1] for row in db.rows] == [1000.0, 1001.0] and recorder.written == 2
 
 
+# ---------- your incidents (what is waiting on you) ----------
+
+def _mine(h: Harness, headers: dict) -> list[dict]:
+    response = h.client.get("/api/me/incidents", headers=headers)
+    assert response.status_code == 200, response.text
+    return response.json()["incidents"]
+
+
+def test_my_incidents_shows_the_handoff_waiting_for_the_morning_pair():
+    with Harness(github=FakeGitHub()) as h:
+        started = _start(h, []).json()["incident_id"]  # duy alone: tung is not on it
+        assert [i["incident_id"] for i in _mine(h, MORNING)] == [INC]
+        h.night_shift()
+        night = next(i for i in _mine(h, TEAM) if i["incident_id"] == INC)
+        assert night["role"] == "night" and night["next_step"] == "Write the handoff for the Morning pair"
+        _post_handoff(h, {**HANDOFF, "morning_pair": ["tung"]})
+        first = _mine(h, MORNING)[0]
+        assert first["incident_id"] == INC and first["role"] == "morning" and first["handoff_ready"]
+        assert first["waiting_on_you"] and first["next_step"] == "Read and rate the Night handoff"
+        assert next(i for i in _mine(h, TEAM) if i["incident_id"] == INC)["waiting_on_you"] is False
+        _rate(h)
+        assert _mine(h, MORNING)[0]["next_step"] == "Fix the bug in VS Code and open a pull request"
+        _verify(h)
+        assert _mine(h, MORNING)[0]["next_step"] == "Deploy the verified fix"
+        h.ok("deploy_fix", headers=MORNING)
+        assert _mine(h, MORNING)[0]["next_step"] == "Debrief with Dana"
+        assert started not in [i["incident_id"] for i in _mine(h, MORNING)]
+        assert h.client.get("/api/me/incidents").status_code == 401
+        assert h.client.get("/api/me/incidents", headers=RELAY).status_code == 403
+
+
 # ---------- starting incidents and teammates ----------
 
 def _start(h: Harness, teammates: list[str], headers: dict = TEAM, level: str = "practice"):
