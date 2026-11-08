@@ -1,17 +1,17 @@
-import { fetchDemo, teamEntryApi } from "../../../night/demo-config";
+import { type DemoConfig, fetchDemo, teamEntryApi } from "../../../night/demo-config";
 import { type CohortRoster, isCohortId, isTeamIncidentId } from "../../../night/team-entry-contract";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const config = teamEntryApi();
+  const config = (await teamEntryApi());
   if (!config) return new Response(null, { status: 404 });
   const ids = new URL(request.url).searchParams.getAll("cohort");
   if (ids.length !== 1 || !isCohortId(ids[0])) return new Response(null, { status: 422 });
   return roster(request, config, `/api/cohorts/${ids[0]}`);
 }
 
-async function roster(request: Request, config: NonNullable<ReturnType<typeof teamEntryApi>>, path: string, body?: object) {
+async function roster(request: Request, config: DemoConfig, path: string, body?: object) {
   try {
     const response = await fetchDemo(request, config, path, body);
     if (!response.ok) return new Response(null, { status: response.status });
@@ -25,7 +25,7 @@ async function roster(request: Request, config: NonNullable<ReturnType<typeof te
 }
 
 export async function POST(request: Request) {
-  const config = teamEntryApi();
+  const config = (await teamEntryApi());
   if (!config) return new Response(null, { status: 404 });
   if (request.headers.get("content-type")?.split(";")[0] !== "application/json") return new Response(null, { status: 415 });
   const body = await request.json().catch(() => null);

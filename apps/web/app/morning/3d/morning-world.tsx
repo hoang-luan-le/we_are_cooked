@@ -11,8 +11,9 @@ import { fixtureInput, fixturePr, liveInput, loadProgress, prStatusLines, savePr
 import { MeetingPanel } from "../meeting/meeting-panel";
 import { type Assignment, authorFixture, beatDisplay, buildBeats, reviewerFixture } from "../meeting/meeting-script";
 import { MorningWorkspace } from "../morning-workspace";
+import type { Pilot } from "../pilot";
 
-type Team = { incidentId: string; user: string; relayBase: string; rehearsalGitHub: boolean };
+type Team = { incidentId: string; user: string; relayBase: string; rehearsalGitHub: boolean; pilot?: Pilot };
 export type FixtureOptions = { role?: string; evidence?: string; handoff?: string; pr?: string };
 const every = { ids: office.targets.map(target => target.id), walk: true, ringing: false };
 const deskMesh = { "desk-1": "Custom_WS1_PR_Review_Screen", "desk-2": "WS2_Laptop_Screen" } as const;

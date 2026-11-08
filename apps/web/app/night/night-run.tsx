@@ -10,6 +10,7 @@ import { fixtureCohort, type FixtureEntry, levels, updateFixtureEntry } from "./
 import { IncidentBoard } from "./incident-board";
 import { NightHandoff } from "./night-handoff";
 import { TeamEvidence } from "./team-evidence";
+import { ViewSwitch } from "../world/view-switch";
 import { type NightAction, useNightApi } from "./use-night-api";
 
 type SupportCall = Exclude<DanaCall, "briefing">;
@@ -189,6 +190,7 @@ export function NightRun({ apiUser, relayBase, entry, incidentId, onStage, rende
       <header className="app-header">
         <Link href={entry || incidentId ? "/start" : "/"}>Incident Lab</Link>
         <span className="badge fixture">{apiUser ? "Local demo API" : "Development fixture"}</span>
+        <ViewSwitch shift="night" incidentId={incidentId} />
       </header>
       <main className={visibleStage === "board" ? "workspace" : "call-layout"}>
         {entry ? (
@@ -291,6 +293,15 @@ export function NightRun({ apiUser, relayBase, entry, incidentId, onStage, rende
             {api.snapshot ? <TeamEvidence snapshot={api.snapshot} pending={api.pending || api.readError} onAction={perform} /> : null}
             {incidentId && apiUser && incident ? <NightHandoff incident={incident} user={apiUser}
               unavailable={api.pending || api.readError} onSave={api.saveHandoff} /> : null}
+            {incidentId && incident?.handoff?.morning_pair[0] && incident.handoff.morning_pair[0] !== apiUser ? (
+              <form method="post" action="/api/session" className="phase-link">
+                <input type="hidden" name="handle" value={incident.handoff.morning_pair[0]} />
+                <input type="hidden" name="next" value={`/incident/${incidentId}`} />
+                <button type="submit" className="button primary">
+                  Continue as the Morning engineer ({incident.handoff.morning_pair[0]})
+                </button>
+              </form>
+            ) : null}
             {incidentId && incident?.handoff ? <Link className="button primary phase-link"
               href={`/morning?incident=${encodeURIComponent(incidentId)}`}>Open Morning workspace</Link> : null}
           </>

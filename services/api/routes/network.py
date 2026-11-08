@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, field_validator
 from accounts import HandleTaken
 from auth import RELAY_ACTOR, Actor, require_member, require_signed_in
 from engine.errors import conflict, invalid
+from engine.my_incidents import my_incidents
 from engine.rubric import facts_rubric
 from engine.state import IncidentState
 from network import UNSET, NetworkStore
@@ -191,6 +192,12 @@ def _evidence(handle: str, rt: Runtime, store: NetworkStore) -> dict:
     if not incidents:
         raise HTTPException(status_code=404, detail="No evidence for that handle yet.")
     return {"handle": handle, "incidents": incidents, "connections": len(store.mutual(handle))}
+
+
+@router.get("/me/incidents")
+def get_my_incidents(actor: Actor = Depends(require_member), rt: Runtime = Depends(get_runtime)) -> dict:
+    """Your incidents, your role in each, and what is waiting on you (e.g. a handoff handed to you)."""
+    return {"incidents": my_incidents([state for state, _ in rt.store.all()], actor.handle)}
 
 
 @router.get("/me/evidence")

@@ -25,7 +25,7 @@ export default async function NightPage({ searchParams }: { searchParams: Promis
     return <FixtureNight key={entryId} entryId={entryId} />;
   }
   if (params.incident !== undefined) {
-    const config = !offline && params.fixture === undefined ? teamEntryApi() : undefined;
+    const config = !offline && params.fixture === undefined ? (await teamEntryApi()) : undefined;
     if (!config || !isTeamIncidentId(params.incident)) {
       return <main className="landing"><h1>Team incident unavailable</h1>
         <Link className="button" href="/start">Back to simulation entry</Link></main>;
@@ -33,7 +33,7 @@ export default async function NightPage({ searchParams }: { searchParams: Promis
     const relayBase = devRelayBase() ?? config.origin.replace(/^http:/, "ws:");
     return <NightRun key={params.incident} apiUser={config.user} incidentId={params.incident} relayBase={relayBase} />;
   }
-  const config = offline ? undefined : demoApi();
+  const config = offline ? undefined : (await demoApi());
   const relayBase = offline ? undefined : devRelayBase() ?? config?.origin.replace(/^http:/, "ws:");
   return <NightRun key={config ? "api" : "fixture"} apiUser={config?.user} relayBase={relayBase} />;
 }

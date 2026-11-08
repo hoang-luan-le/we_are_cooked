@@ -5,6 +5,8 @@ import type { Handoff, HandoffRatingRequest, PullRequestInfo } from "../../../..
 import type { NightIncident } from "../night/use-night-api";
 import { githubPullUrl } from "./morning-contract";
 import { useMorningWrite } from "./use-morning-api";
+import { FixInVsCode } from "./fix-in-vscode";
+import type { Pilot } from "./pilot";
 
 const ciLabels = { success: "Passing", failure: "Failed", pending: "Pending", none: "No result found" } as const;
 const verifyErrors: Record<string, string> = {
@@ -65,8 +67,8 @@ export function HandoffReview({ incident, handoff, user, unavailable, onChange }
   );
 }
 
-export function MorningReview({ incident, unavailable, onChange, onDeploy }: {
-  incident: NightIncident; unavailable: boolean; onChange: () => void; onDeploy: () => Promise<boolean>;
+export function MorningReview({ incident, unavailable, onChange, onDeploy, pilot }: {
+  incident: NightIncident; unavailable: boolean; onChange: () => void; onDeploy: () => Promise<boolean>; pilot?: Pilot;
 }) {
   const { busy, submit } = useMorningWrite(incident.incident_id);
   const [url, setUrl] = useState("");
@@ -87,6 +89,7 @@ export function MorningReview({ incident, unavailable, onChange, onDeploy }: {
     <section className="panel phase-panel" aria-labelledby="morning-review">
       <h2 id="morning-review" ref={heading} tabIndex={-1}>Verify the checkout fix</h2>
       <p>Reproduce the guest checkout failure, add a regression test, and open the fix in GitHub for your teammate to review.</p>
+      {!fixed ? <FixInVsCode pilot={pilot} open={!pr} /> : null}
       {incident.level === "explore" ? <PracticeReview /> : null}
       {!fixed ? <form className="entry-section" onSubmit={async event => {
         event.preventDefault();

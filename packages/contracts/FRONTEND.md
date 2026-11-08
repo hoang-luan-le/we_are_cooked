@@ -17,6 +17,13 @@ uvicorn main:app --reload --port 8000     # reads the repo-root .env; works with
 In `.env`: `NEXT_PUBLIC_API_URL=http://localhost:8000`, `NEXT_PUBLIC_API_WS=ws://localhost:8000`.
 CORS allows every origin while `CORS_ORIGINS` is empty.
 
+## 1b. One app: session, home, incident router
+
+- **Who you are** comes from the `il_demo_user` session cookie (set by `POST /api/session` from the `/session` page, choices from `GET /api/demo/team`); `NIGHT_DEMO_USER` is only the fallback. Auth0 will replace the cookie.
+- **`/home`** lists your incidents (`GET /api/me/incidents`) with a Continue button.
+- **`/incident/[id]`** sends you to `/night` before the handoff and `/morning` after it (`?view=3d` for 3D).
+- After the handoff, the Night board offers **Continue as the Morning engineer (<handle>)**.
+
 ## 2. One fetch helper for everything
 
 ```ts
@@ -148,6 +155,7 @@ exists; whole demo team are teammates), or create one with
   { incident_id, to_user, work_again, note }`. Private: the reply never says what the other person
   answered.
 - Network: `GET /api/network` → cards only where **both** said yes; `contact` appears only here.
+- Your incidents: `GET /api/me/incidents` → `MyIncident[]` with your role and a plain-language `next_step`. `/morning` and `/morning/3d` without `?incident=` now list what was handed to you (auto-refreshing).
 - Profile: `GET /api/me`; `PATCH /api/me { contact?, github_login?, public_evidence? }`.
 - Evidence: `GET /api/me/evidence` (your own), `GET /api/evidence/{handle}` (only if they set
   `public_evidence: true`; 404 otherwise).
