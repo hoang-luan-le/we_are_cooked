@@ -3,11 +3,11 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from auth import Actor, require_actor, require_member
-from engine.actions import MAX_TEXT_CHARS, ActionRejected, apply_action, request_hint
+from engine.actions import MAX_TEXT_CHARS, apply_action, request_hint
 from engine.state import ACTIONS
 from engine.views import facts_view, state_view
 
@@ -54,12 +54,10 @@ def post_action(
         return new_state, {"ok": True, "action": body.action, "message": message,
                            "state": state_view(new_state, rt.scenario, now)}
 
-    try:
-        return translate_store_errors(
-            lambda: rt.store.change_once(incident_id, body.idempotency_key, fingerprint, change), incident_id,
-        )
-    except ActionRejected as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.message) from None
+    # ActionRejected -> {"code", "detail"} via the app's exception handler (main.py).
+    return translate_store_errors(
+        lambda: rt.store.change_once(incident_id, body.idempotency_key, fingerprint, change), incident_id,
+    )
 
 
 @router.post("/{incident_id}/hint")

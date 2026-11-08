@@ -6,6 +6,7 @@ from typing import Callable, TypeVar
 
 from fastapi import HTTPException, Request
 
+from engine.errors import conflict
 from scenario_loader import Scenario
 from store import IdempotencyConflict, IncidentStore, UnknownIncident
 
@@ -31,4 +32,4 @@ def translate_store_errors(call: Callable[[], T], incident_id: str) -> T:
     except UnknownIncident:
         raise HTTPException(status_code=404, detail=f"No incident '{incident_id}'.") from None
     except IdempotencyConflict as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from None
+        raise conflict("idempotency_conflict", str(exc)) from None

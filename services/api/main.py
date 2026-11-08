@@ -11,10 +11,13 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator, Callable
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from cohorts import CohortStore
 from config import Settings
-from routes import debrief, demo, incidents
+from engine.errors import ActionRejected
+from routes import cohorts, debrief, demo, handoff, incidents
 from routes.deps import Runtime
 from scenario_loader import ScenarioError, load_scenario
 from store import IncidentStore
@@ -36,18 +39,45 @@ def _start_runtime(settings: Settings, clock: Callable[[], float]) -> tuple[Runt
     return Runtime(scenario=scenario, store=store), None
 
 
+CORS_HEADERS = ["Content-Type", "Authorization", "X-Demo-User", "X-Internal-Key"]
+
+
+def _add_cors(app: FastAPI, settings: Settings) -> None:
+    """CORS_ORIGINS limits browsers to the web app's origin; empty allows all (dev only)."""
+    origins = list(settings.cors_origins) or ["*"]
+    if origins == ["*"]:
+        logger.warning("CORS_ORIGINS is empty: allowing every origin (dev only)")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_methods=["GET", "POST", "PATCH"],
+        allow_headers=CORS_HEADERS,
+        allow_credentials=False,
+    )
+
+
+async def _rejected(request: Request, exc: ActionRejected) -> JSONResponse:
+    """Engine rejections as {"code", "detail"} so the UI can show a plain message per code."""
+    return JSONResponse(status_code=exc.status_code, content={"code": exc.code, "detail": exc.message})
+
+
 def create_app(settings: Settings | None = None, clock: Callable[[], float] = time.monotonic) -> FastAPI:
     resolved = settings or Settings.from_env()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.settings = resolved
+        app.state.cohorts = CohortStore()  # independent of the scenario
         app.state.runtime, app.state.scenario_error = _start_runtime(resolved, clock)
         yield
 
-    app = FastAPI(title="Incident Lab API", version="0.2.0", lifespan=lifespan)
+    app = FastAPI(title="Incident Lab API", version="0.3.0", lifespan=lifespan)
+    _add_cors(app, resolved)
+    app.add_exception_handler(ActionRejected, _rejected)
     app.include_router(incidents.router)
+    app.include_router(handoff.router)
     app.include_router(debrief.router)
+    app.include_router(cohorts.router)
     app.include_router(demo.router)
     app.include_router(dana_router)  # WS /ws/voice (owned by AI)
 

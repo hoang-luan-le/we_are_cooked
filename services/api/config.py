@@ -23,6 +23,7 @@ class Settings:
     internal_key: str = ""          # shared secret for server-to-server calls (Dana relay)
     demo_team: tuple[str, ...] = DEFAULT_DEMO_TEAM
     auth0_domain: str = ""
+    cors_origins: tuple[str, ...] = ()   # empty = every origin (dev only)
 
     @property
     def demo_mode(self) -> bool:
@@ -39,4 +40,9 @@ class Settings:
             internal_key=os.environ.get("INTERNAL_KEY", "").strip(),
             demo_team=team or DEFAULT_DEMO_TEAM,
             auth0_domain=os.environ.get("AUTH0_DOMAIN", "").strip(),
+            cors_origins=_origins(os.environ.get("CORS_ORIGINS", "")),
         )
+
+
+def _origins(raw: str) -> tuple[str, ...]:
+    return tuple(o.strip().rstrip("/") for o in raw.split(",") if o.strip())

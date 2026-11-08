@@ -70,23 +70,47 @@ def validation(state: IncidentState, scenario: Scenario) -> dict:
     return _score("Next time, confirm recovery on the dashboard and get the fix through CI.", NONE, evidence)
 
 
+def _handoff_evidence(state: IncidentState) -> str:
+    if state.handoff is None:
+        return "not written"
+    if state.handoff.rating is None:
+        return "written, not rated yet"
+    return f"rated {state.handoff.rating.score}/5"
+
+
 def collaboration(state: IncidentState, scenario: Scenario) -> dict:
+    """Shared findings + a handoff the morning pair rated clear + a substantive PR review."""
     shared = len(state.findings)
+    clear_handoff = bool(state.handoff and state.handoff.rated_clear)
     reviewed = bool(state.pr and state.pr.substantive_review)
-    evidence = f"shared findings: {shared} · substantive teammate review: {_yes(reviewed)}"
-    if shared and reviewed:
-        return _score("You shared findings and got a teammate's real review on the PR.", FULL, evidence)
-    if shared:
-        return _score("You shared findings; the PR still needs a teammate's real review.", PARTIAL, evidence)
-    if reviewed:
-        return _score("Your PR got a real review; sharing findings during the night helps too.", PARTIAL, evidence)
-    return _score("Next time, share what you find with your pair and ask for a real review.", NONE, evidence)
+    evidence = (f"shared findings: {shared} · handoff: {_handoff_evidence(state)}"
+                f" · substantive teammate review: {_yes(reviewed)}")
+    pieces = (
+        (bool(shared), "shared findings", "share findings"),
+        (clear_handoff, "wrote a clear handoff", "a handoff the morning pair rates 4 or 5"),
+        (reviewed, "got a teammate's real review", "a teammate's real review on the PR"),
+    )
+    done = [did for ok, did, _ in pieces if ok]
+    todo = [need for ok, _, need in pieces if not ok]
+    if not todo:
+        return _score("You shared findings, wrote a clear handoff and got a teammate's real review.", FULL, evidence)
+    if done:
+        return _score(f"You {_join(done)}; still to do: {_join(todo)}.", PARTIAL, evidence)
+    return _score("Next time, share findings, write a clear handoff and ask for a real review.", NONE, evidence)
+
+
+def _join(items: list[str]) -> str:
+    return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
 
 
 def communication(state: IncidentState, scenario: Scenario) -> dict:
-    """Debrief answer plus the team's status updates, checked for impact · cause · action · risk."""
+    """Debrief answer, status updates and handoff note, checked for impact · cause · action · risk."""
     keywords = scenario.answer_key.communication_keywords
-    texts = tuple(note.text for note in state.status_updates) + ((state.debrief.answer,) if state.debrief else ())
+    texts = (
+        tuple(note.text for note in state.status_updates)
+        + ((state.handoff.text,) if state.handoff else ())
+        + ((state.debrief.answer,) if state.debrief else ())
+    )
     covered = {part: mentions_any(texts, getattr(keywords, part)) for part in COMMUNICATION_PARTS}
     hits = [part for part in COMMUNICATION_PARTS if covered[part]]
     missing = [part for part in COMMUNICATION_PARTS if not covered[part]]
