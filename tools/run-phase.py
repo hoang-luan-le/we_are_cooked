@@ -10,12 +10,13 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 
 
 FORK = "thanhtungnguyen-dev/we_are_cooked"
 LANES = {
     "CODEX": ("branch-codex", "reports/codex.md", ("apps/web/",),
-              ["codex", "exec", "--sandbox", "workspace-write", "--model", "gpt-6.1-sol"]),
+              None),
     "ARGON": ("branch-argon", "reports/argon.md", ("design/frontend/",),
               ["agy", "--model", "gemini-4-argon-high", "-p"]),
     "CLAUDE": ("branch-claude", "reports/claude.md", ("apps/web/", "design/frontend/"),
@@ -25,7 +26,8 @@ LANES = {
 
 def git(*args, cwd=None, check=True):
     return subprocess.run(
-        ["git", *args], cwd=cwd, check=check, text=True, stdout=subprocess.PIPE
+        ["git", *args], cwd=cwd, check=check, text=True, stdout=subprocess.PIPE,
+        stderr=None if check else subprocess.DEVNULL
     )
 
 
@@ -59,6 +61,8 @@ def read_queue(control, phase):
             raise ValueError(f"{role} is not authorized to run")
         if not re.fullmatch(rf"{phase}-{role}-[A-Z0-9-]+", task):
             raise ValueError(f"Invalid command ID for {role}: {task}")
+        if role == "CODEX" and field(lane, "Mode") != "WEB":
+            raise ValueError("CODEX must use Mode: WEB")
         commands.append((role, task, lane))
     return commands
 
@@ -89,18 +93,54 @@ def check_main(expected):
         raise RuntimeError("Fork main changed. Check the current phase before restarting.")
 
 
+def published_report(remote, previous, role, task, report):
+    if not remote:
+        return None
+    result = git("show", f"{remote}:{report}", check=False)
+    if result.returncode:
+        return None
+    status = prior_status(result.stdout, task)
+    if status == "BLOCKED":
+        raise RuntimeError(f"{task} is blocked. Read {report} on {LANES[role][0]} and issue a new Command-ID.")
+    if status == "READY_FOR_REVIEW":
+        if any(f"### {letter}." not in result.stdout for letter in "ABC"):
+            raise RuntimeError(f"{task} report lacks a teaching section")
+        git("merge-base", "--is-ancestor", previous, remote)
+        return remote, report
+    return None
+
+
+def wait_for_codex(main, previous, branch, tip_ref, task, report):
+    print(f"Waiting for Codex Web: publish {task} on {branch} with {report}.", flush=True)
+    deadline = time.monotonic() + 2700
+    while True:
+        check_main(main)
+        git("fetch", "--quiet", "--prune", "origin", "+refs/heads/*:refs/remotes/origin/*")
+        if git("rev-parse", "origin/main").stdout.strip() != main:
+            raise RuntimeError("Fork main changed. Check the current phase before restarting.")
+        tip = git("rev-parse", "--verify", "--quiet", tip_ref, check=False).stdout.strip()
+        ready = published_report(tip, previous, "CODEX", task, report)
+        if ready:
+            paths = git("diff", "--name-only", "--no-renames", "-z", previous, tip).stdout.split("\0")
+            if any(path and path != report and not path.startswith("apps/web/") for path in paths):
+                raise RuntimeError(f"{task} contains out-of-scope changes. Review {branch} before continuing.")
+            print(f"{task}: READY_FOR_REVIEW https://github.com/{FORK}/blob/{tip}/{report}", flush=True)
+            return ready
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError(f"Timed out waiting for {task}. Restart after the Codex Web commit is published.")
+        time.sleep(min(30, remaining))
+
+
 def run_lane(main, previous, role, task, lane, rules):
     branch, report, prefixes, command = LANES[role]
     tip_ref = f"refs/remotes/origin/{branch}"
+    if role == "CODEX":
+        return wait_for_codex(main, previous, branch, tip_ref, task, report)
     remote = git("rev-parse", "--verify", "--quiet", tip_ref, check=False).stdout.strip()
-    if remote:
-        prior = git("show", f"{remote}:{report}", check=False)
-        status = prior_status(prior.stdout, task) if prior.returncode == 0 else None
-        if status == "BLOCKED":
-            raise RuntimeError(f"{task} is blocked. Read {branch}:{report} and issue a new Command-ID after resolving it.")
-        if status == "READY_FOR_REVIEW":
-            git("merge-base", "--is-ancestor", previous, remote)
-            return remote, report
+    ready = published_report(remote, previous, role, task, report)
+    if ready:
+        return ready
 
     check_main(main)
     if not shutil.which(command[0]):
