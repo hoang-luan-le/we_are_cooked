@@ -1,0 +1,108 @@
+{
+  "_note": "DRAFT by Backend (Duy) for BA2 to review. ShopNorth is a fictional example company. Edit any text or number freely; keep the keys. The API checks this file at startup and reports problems at GET /health.",
+  "id": "shopnorth-checkout-v2140",
+  "incident_id": "inc_demo",
+  "company": "ShopNorth (fictional example)",
+  "clock": { "page_at": "02:04" },
+  "panels": ["dashboard", "logs", "deploys", "runbook"],
+  "releases": { "bad": "v2.14.0", "bad_at": "01:47", "good": "v2.13.9" },
+
+  "metrics": {
+    "baseline": { "error_rate": 0.4, "orders_per_min": 420, "p95_ms": 380 },
+    "at_page":  { "error_rate": 27.1, "orders_per_min": 307, "p95_ms": 1291 },
+    "broken":   { "error_rate": 31.2, "orders_per_min": 290, "p95_ms": 1450 },
+    "ramp_s": 90,
+    "recovery_s": 10,
+    "restart_dip": { "duration_s": 20, "error_rate": 6.0, "orders_per_min": 395, "p95_ms": 520 }
+  },
+
+  "dana_knows": [
+    { "topic": "alert", "text": "The checkout error-rate alert fired at 2:04 a.m." },
+    { "topic": "impact", "text": "About a third of checkouts are failing, in the middle of the flash sale." },
+    { "topic": "changes tonight", "text": "The team shipped a release, v2.14.0, at 1:47 a.m. I don't know what was in it." },
+    { "topic": "other alerts", "text": "There's also a high CPU warning on search-service." }
+  ],
+
+  "stakeholders": {
+    "update_every_s": 120,
+    "nudge_message": "Dana: Any update? The VP is asking what to tell customers."
+  },
+
+  "action_results": {
+    "answer": "You picked up. Dana is on the line.",
+    "snooze": "Snoozed. The phone will ring again in a moment.",
+    "open_panel": "Panel opened.",
+    "share_finding": "Finding shared with your pair.",
+    "status_update": "Status update sent to the VP.",
+    "rollback": "Rolled back to v2.13.9. Discounts are OFF until a fix ships.",
+    "restart": "Restarted checkout. Errors dipped for a moment, then came back.",
+    "scale": "Added two checkout instances. The error rate did not change.",
+    "restart_search": "Restarted search-service. Its CPU warning cleared; checkout errors did not change.",
+    "deploy_fix": "Deployed the fix. Checkout is healthy and discounts are back ON."
+  },
+
+  "help_ladder": [
+    {
+      "topic": "impact",
+      "source": "dashboard",
+      "found_when": { "panels_opened": ["dashboard"] },
+      "fact": "Error rate jumped from 0.4% to about 31% starting around 01:50, and orders per minute fell from 420 to about 290.",
+      "hint": "Open the dashboard. When did the errors start, and how many customers are hit?"
+    },
+    {
+      "topic": "who_fails",
+      "source": "logs",
+      "found_when": { "panels_opened": ["logs"] },
+      "fact": "The failing requests are guest checkouts (guest=true), all with KeyError: 'tier' in loyalty_percent.",
+      "hint": "Open the logs. Is every customer failing, or only some of them?"
+    },
+    {
+      "topic": "deploy_diff",
+      "source": "deploys",
+      "found_when": { "panels_opened": ["deploys"] },
+      "fact": "v2.14.0 shipped at 01:47 and changed checkout/pricing.py: loyalty_percent now reads customer.profile[\"tier\"].",
+      "hint": "Open the deploy history. What changed right before the errors started?"
+    },
+    {
+      "topic": "runbook",
+      "source": "runbook",
+      "found_when": { "panels_opened": ["runbook"] },
+      "fact": "The runbook says: stop the damage first. If a release broke checkout, roll back, then investigate.",
+      "hint": "Check the runbook. What does it say to do first when a release breaks checkout?"
+    },
+    {
+      "topic": "mitigation",
+      "source": "actions",
+      "found_when": { "action": "rollback" },
+      "fact": "The team rolled back to v2.13.9. Errors are going back to normal. Loyalty discounts are OFF until a fix ships.",
+      "hint": "Customers are still failing. Is there a safe way to undo tonight's change while you keep investigating?"
+    },
+    {
+      "topic": "missing_field",
+      "source": "logs + deploys",
+      "found_when": { "panels_opened": ["logs", "deploys"], "team_names_cause": true },
+      "fact": "Guest customers have no loyalty tier, so the new code's customer.profile[\"tier\"] raises KeyError.",
+      "hint": "Compare the failing requests with the new code. What does the new code expect every customer to have?"
+    },
+    {
+      "topic": "fix",
+      "source": "github",
+      "found_when": { "status": "fixed" },
+      "fact": "The fix is merged with passing CI and deployed.",
+      "hint": "Write a failing test that shows the bug, then fix it in the pilot repo and open a PR."
+    }
+  ],
+  "all_found_hint": "You've found everything. Write it down for the morning shift: impact, cause, action and risk.",
+
+  "answer_key": {
+    "root_cause": "v2.14.0 added loyalty-tier discounts. loyalty_percent reads customer.profile[\"tier\"], guests have no tier, so checkout raises KeyError: 'tier' at checkout/pricing.py:19.",
+    "fix": "A missing or unknown tier gives a 0% loyalty discount. Tests must reject a lazy try/except that returns a $0 order total.",
+    "cause_keywords": ["tier", "profile", "missing"],
+    "communication_keywords": {
+      "impact": ["checkout", "customer", "order", "third", "percent", "%", "failing", "failed", "errors"],
+      "cause": ["tier", "guest", "loyalty", "v2.14", "release", "deploy", "bug"],
+      "action": ["rolled back", "rollback", "roll back", "v2.13.9", "reverted", "fixed", "fix"],
+      "risk": ["discount", "until", "risk", "monitor", "watch"]
+    }
+  }
+}
