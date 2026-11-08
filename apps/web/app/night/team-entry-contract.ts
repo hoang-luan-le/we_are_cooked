@@ -11,5 +11,5 @@ export function isTeamIncidentId(value: unknown): value is string {
 }
 
 export function teamIncidentHref(id: string) {
-  return `/night?incident=${encodeURIComponent(id)}`;
+  return `/night/3d?incident=${encodeURIComponent(id)}`;
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import type { PullRequestInfo } from "../../../../../packages/contracts/types";
 import { useNightApi } from "../../night/use-night-api";
 import { office, type PanelId } from "../../world/world-contract";
@@ -20,7 +20,9 @@ const deskMesh = { "desk-1": "Custom_WS1_PR_Review_Screen", "desk-2": "WS2_Lapto
 const panelDesk = { "workstation-1": "desk-1", "workstation-2": "desk-2" } as const;
 
 /** The office around the existing Morning workspace, with the incident review before it. */
-export function MorningWorld({ team, forceFallback, fixture }: { team?: Team; forceFallback?: boolean; fixture?: FixtureOptions }) {
+export function MorningWorld({ team, forceFallback, fixture, handoffs }: {
+  team?: Team; forceFallback?: boolean; fixture?: FixtureOptions; handoffs?: ReactNode;
+}) {
   const [panel, setPanel] = useState<PanelId>();
   const [fallback, setFallback] = useState(Boolean(forceFallback));
   const [entered, setEntered] = useState(false);
@@ -30,10 +32,10 @@ export function MorningWorld({ team, forceFallback, fixture }: { team?: Team; fo
 
   // Only labeled fixtures carry a role. The API has a list of names, which grants nothing.
   const assignment: Assignment | null = !team && fixture?.role === "author" ? authorFixture : !team && fixture?.role === "reviewer" ? reviewerFixture : null;
-  const input = useMemo(() => team
+  const input = useMemo(() => handoffs ? null : team
     ? incident ? liveInput(incident, evidence) : null
     : fixtureInput({ evidenceMissing: fixture?.evidence === "missing", handoffMissing: fixture?.handoff === "missing" }),
-  [team, incident, evidence, fixture?.evidence, fixture?.handoff]);
+  [handoffs, team, incident, evidence, fixture?.evidence, fixture?.handoff]);
   const beats = useMemo(() => input ? buildBeats(input, assignment) : [], [input, assignment]);
   const pr: PullRequestInfo | null | undefined = team ? incident?.pr : fixturePr(fixture?.pr);
 
@@ -47,6 +49,9 @@ export function MorningWorld({ team, forceFallback, fixture }: { team?: Team; fo
   const displays = useMemo(() => {
     const out: Record<string, DisplayContent> = {};
     if (beat) out.Custom_Meeting_Shared_Screen = beatDisplay(beat, progress.index, beats.length, source);
+    if (handoffs) out.Custom_Meeting_Shared_Screen = {
+      eyebrow: "Morning shift", title: "Your incident handoffs", lines: ["Open the briefing to choose an incident."], badge: source,
+    };
     for (const desk of ["desk-1", "desk-2"] as const) {
       const yours = assignment?.desk === desk;
       const other = assignment && !yours;
@@ -58,7 +63,7 @@ export function MorningWorld({ team, forceFallback, fixture }: { team?: Team; fo
       };
     }
     return out;
-  }, [beat, progress.index, beats.length, source, assignment, pr]);
+  }, [beat, progress.index, beats.length, source, assignment, pr, handoffs]);
 
   const objective: Objective = !entered && !progress.complete ? { text: "Go inside through the entrance doors", at: [0, 0] }
     : !progress.complete ? { text: "Join Dana's briefing in the meeting room", at: [-2, 7.43] }
@@ -75,12 +80,12 @@ export function MorningWorld({ team, forceFallback, fixture }: { team?: Team; fo
     <WorldShell config={office} availability={every} alwaysShowPanel={false} forceFallback={forceFallback} objective={objective}
       displays={displays} meeting={meetingState} onPanelChange={setPanel} onDoor={onDoor} onFallbackChange={setFallback}>
       <div hidden={!showMeeting}>
-        {beat ? <MeetingPanel beats={beats} index={progress.index} source={source} complete={progress.complete}
+        {handoffs ?? (beat ? <MeetingPanel beats={beats} index={progress.index} source={source} complete={progress.complete}
           onIndex={index => update({ ...progress, index })}
           onFinish={() => {
             update({ ...progress, complete: true });
             document.querySelector<HTMLElement>(".world-panel-close")?.click();
-          }} /> : <main className="meeting"><p role="status">Loading the incident review…</p></main>}
+          }} /> : <main className="meeting"><p role="status">Loading the incident review…</p></main>)}
       </div>
       <div hidden={!showDesk}>
         <DeskTask assignment={assignment} desk={desk} pr={pr} />

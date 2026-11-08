@@ -5,6 +5,10 @@ const api = process.env.NIGHT_TEST_API_ORIGIN;
 const teamEntry = process.env.NIGHT_TEST_TEAM_ENTRY === "1";
 const savedKey = "incident-lab.team-entry.v1.demo-a.incident";
 
+test.beforeEach(async ({ context }) => {
+  await context.addInitScript(() => { HTMLCanvasElement.prototype.getContext = (() => null) as never; });
+});
+
 test("joins a real cohort, starts a selected team, and resumes the same incident", async ({ page, request }) => {
   test.skip(!api || !teamEntry, "Start the team backend and opt into the team entry test.");
   const headers = { "X-Demo-User": "demo-b" };
@@ -13,7 +17,7 @@ test("joins a real cohort, starts a selected team, and resumes the same incident
   const cohort = await created.json();
 
   await page.goto("/");
-  await page.getByRole("link", { name: "Start simulation" }).click();
+  await page.getByRole("link", { name: "Night", exact: true }).click();
   await page.getByRole("radio", { name: /Challenge/ }).check();
   const code = page.getByRole("textbox", { name: "Team cohort code" });
   await code.fill(cohort.join_code === "ZZZZZZ" ? "XXXXXX" : "ZZZZZZ");
@@ -36,6 +40,7 @@ test("joins a real cohort, starts a selected team, and resumes the same incident
   await page.getByRole("button", { name: "Start with selected teammates" }).click();
   await expect(page.getByRole("heading", { name: "Dana is calling." })).toBeVisible();
   const url = page.url();
+  expect(new URL(url).pathname).toBe("/night/3d");
   const id = new URL(url).searchParams.get("incident");
   expect(id).toMatch(/^inc_[a-f0-9]{8}$/);
   const state = await request.get(`${api}/api/incident/${id}`);
@@ -46,6 +51,11 @@ test("joins a real cohort, starts a selected team, and resumes the same incident
   await page.getByRole("link", { name: "Resume API incident" }).click();
   await expect(page).toHaveURL(url);
   await expect(page.getByRole("heading", { name: "Dana is calling." })).toBeVisible();
+
+  await page.goto("/home");
+  await page.getByRole("listitem").filter({ hasText: `Incident ${id}` }).getByRole("link", { name: "Continue" }).click();
+  await expect(page).toHaveURL(url);
+  await expect(page.getByRole("link", { name: "Switch to 2D view" })).toHaveCount(0);
 
   const other = await request.post(`${api}/api/incident/start`, { headers, data: { level: "explore" } });
   const otherId = (await other.json()).incident_id;
@@ -103,7 +113,7 @@ for (const operation of ["Join", "failed Start"] as const) {
       await expect(page.getByRole("button", { name: "Working…" })).toBeDisabled();
       const resume = page.getByRole("link", { name: "Resume API incident" });
       allowLookup.resolve();
-      await expect(resume).toHaveAttribute("href", `/night?incident=${id}`);
+      await expect(resume).toHaveAttribute("href", `/night/3d?incident=${id}`);
       await expect(page.getByRole("button", { name: "Working…" })).toBeDisabled();
 
       allowSubmission.resolve();
@@ -112,7 +122,7 @@ for (const operation of ["Join", "failed Start"] as const) {
       } else {
         await expect(page.getByRole("alert").filter({ hasText: "The API did not confirm the start." })).toBeVisible();
       }
-      await expect(resume).toHaveAttribute("href", `/night?incident=${id}`);
+      await expect(resume).toHaveAttribute("href", `/night/3d?incident=${id}`);
       expect(await page.evaluate(key => localStorage.getItem(key), savedKey)).toBe(id);
     } finally {
       allowLookup.resolve();
@@ -152,7 +162,7 @@ test("cancels older validation when Start creates a replacement incident", async
     await page.getByRole("button", { name: "Start solo incident" }).click();
     const { id: replacement } = await (await started).json();
     expect(replacement).not.toBe(id);
-    await expect(page.getByRole("link", { name: "Resume API incident" })).toHaveAttribute("href", `/night?incident=${replacement}`);
+    await expect(page.getByRole("link", { name: "Resume API incident" })).toHaveAttribute("href", `/night/3d?incident=${replacement}`);
     await expect(page.getByText(/This browser could not save an entry link/)).toBeVisible();
     await expect(page).toHaveURL("/start");
     await aborted;

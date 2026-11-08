@@ -1,12 +1,19 @@
 import { expect, test } from "@playwright/test";
 
+test.beforeEach(async ({ context }) => {
+  await context.addInitScript(() => { HTMLCanvasElement.prototype.getContext = (() => null) as never; });
+});
+
 test("starts a solo exercise and resumes its saved recovery after refresh", async ({ page }) => {
   const writes: string[] = [];
   page.on("request", request => {
     if (request.method() === "POST" && new URL(request.url()).pathname.startsWith("/api/")) writes.push(request.url());
   });
   await page.goto("/");
-  const start = page.getByRole("link", { name: "Start simulation" });
+  const shifts = page.getByRole("navigation", { name: "Choose a shift" });
+  await expect(shifts.getByRole("link")).toHaveCount(2);
+  await expect(shifts.getByRole("link", { name: "Morning" })).toHaveAttribute("href", "/morning/3d");
+  const start = shifts.getByRole("link", { name: "Night", exact: true });
   await expect(page.getByRole("region", { name: "The flash-sale page" })).toContainText("31.2%");
   await start.hover();
   await page.waitForTimeout(240);
@@ -21,7 +28,9 @@ test("starts a solo exercise and resumes its saved recovery after refresh", asyn
   await page.getByRole("radio", { name: /Practice/ }).check();
   await expect(page.getByText("Explore checklist", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Start solo exercise" }).click();
-  await expect(page.getByRole("region", { name: "Saved practice exercise" })).toContainText("Practice · Solo Night 2D");
+  await expect(page).toHaveURL(/\/night\/3d\?fixture=1&entry=[a-f0-9]{16}$/);
+  await expect(page.getByText("This browser cannot show the 3D scene.", { exact: false })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Saved practice exercise" })).toContainText("Practice · Solo Night shift");
   const savedUrl = page.url();
   await page.getByRole("button", { name: "Answer Dana", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Dana’s briefing" })).toBeVisible();
@@ -56,9 +65,9 @@ test.describe("mobile entry", () => {
 
   test("recovers from invalid and expired codes and resumes the fixture cohort", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("link", { name: "Start simulation" })).toBeInViewport();
+    await expect(page.getByRole("link", { name: "Night", exact: true })).toBeInViewport();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
-    await page.getByRole("link", { name: "Start simulation" }).tap();
+    await page.getByRole("link", { name: "Night", exact: true }).tap();
     await page.getByRole("radio", { name: /Challenge/ }).check();
     const code = page.getByRole("textbox", { name: "Cohort code" });
     const join = page.getByRole("button", { name: "Join cohort" });
@@ -72,6 +81,7 @@ test.describe("mobile entry", () => {
     expect(await page.evaluate(() => localStorage.length)).toBe(0);
     await code.fill(" night24 ");
     await join.tap();
+    await expect(page).toHaveURL(/\/night\/3d\?fixture=1&entry=[a-f0-9]{16}$/);
     await expect(page.getByRole("region", { name: "Saved practice exercise" })).toContainText("Challenge · Night Investigator");
     await page.getByText("Rehearsal cohort members", { exact: true }).tap();
     await expect(page.getByText("Morgan · Morning Reviewer")).toBeVisible();

@@ -30,7 +30,7 @@ export type FixtureEntry = {
 };
 
 export function fixtureEntryHref(id: string) {
-  return `/night?fixture=1&entry=${encodeURIComponent(id)}`;
+  return `/night/3d?fixture=1&entry=${encodeURIComponent(id)}`;
 }
 
 export function readFixtureEntry(): FixtureEntry | null {

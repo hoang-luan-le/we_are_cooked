@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { mapHeading, type PanelId, type SceneConfig, toMinimap } from "./world-contract";
 import type { DisplayContent } from "./world-display";
@@ -39,10 +38,8 @@ export function WorldShell({ config, availability, alwaysShowPanel, forceFallbac
   const canvas = useRef<HTMLCanvasElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<WorldEngine>(null);
-  const router = useRouter();
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string>();
-  const [view2d, setView2d] = useState(Boolean(forceFallback));
   const [panel, setPanel] = useState<PanelId>();
   const [prompts, setPrompts] = useState<WorldPrompt[]>([]);
   const [mode, setMode] = useState<WorldMode>("loading");
@@ -63,7 +60,7 @@ export function WorldShell({ config, availability, alwaysShowPanel, forceFallbac
   latestDisplays.current = displays;
   const doorHandler = useRef(onDoor);
   doorHandler.current = onDoor;
-  const fallback = view2d || Boolean(error);
+  const fallback = Boolean(forceFallback || error);
 
   useEffect(() => { onFallbackChange?.(fallback); }, [fallback, onFallbackChange]);
 
@@ -90,7 +87,7 @@ export function WorldShell({ config, availability, alwaysShowPanel, forceFallbac
         engine = new WorldEngine(element, config, {
           onReady() {
             setReady(true);
-            element.focus({ preventScroll: true });
+            if (!panelRef.current?.contains(document.activeElement)) element.focus({ preventScroll: true });
             engine?.setAvailability(latest.current.ids, latest.current.walk, latest.current.ringing);
             for (const [mesh, content] of Object.entries(latestDisplays.current ?? {})) engine?.setDisplay(mesh, content);
           },
@@ -170,8 +167,7 @@ export function WorldShell({ config, availability, alwaysShowPanel, forceFallbac
         <div className="world-still" role="status">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={config.still} alt={`Still view of the scene: ${config.title}`} />
-          <p>{error ? `${error} The full 2D workflow is below.` : "2D view. The full workflow is below."}</p>
-          {!error && !forceFallback ? <button onClick={() => setView2d(false)}>Return to 3D</button> : null}
+          <p>{error ? `${error} Continue the exercise below.` : "Scene preview. Continue the exercise below."}</p>
         </div>
       ) : (
         <canvas ref={canvas} className="world-canvas" tabIndex={0}
@@ -183,7 +179,6 @@ export function WorldShell({ config, availability, alwaysShowPanel, forceFallbac
           {!callBusy ? (
             <div className="world-topbar">
               <strong>{config.title}</strong>
-              <button onClick={() => setView2d(true)}>Use 2D view</button>
             </div>
           ) : null}
           {!ready ? <p className="world-loading" role="status">Loading the 3D scene…</p> : null}
@@ -228,15 +223,7 @@ export function WorldShell({ config, availability, alwaysShowPanel, forceFallbac
       ) : null}
 
       <div ref={panelRef} className="world-panel" data-layout={full ? "full" : "side"} hidden={!showPanel}
-        onKeyDown={event => { if (panel && event.key === "Escape" && !(event.target as HTMLElement).matches("input,textarea,select")) closePanel(); }}
-        onClickCapture={event => {
-          const link = (event.target as HTMLElement).closest?.("a");
-          const href = link?.getAttribute("href");
-          if (!fallback && href?.startsWith("/morning?")) {
-            event.preventDefault();
-            router.push(href.replace("/morning?", "/morning/3d?"));
-          }
-        }}>
+        onKeyDown={event => { if (panel && event.key === "Escape" && !(event.target as HTMLElement).matches("input,textarea,select")) closePanel(); }}>
         {panel && !fallback ? (
           <div className="world-panel-bar">
             <strong>{panelTitles[panel]}</strong>

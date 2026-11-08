@@ -13,7 +13,9 @@ type RunProps = { apiUser?: string; relayBase?: string; incidentId?: string };
 const props = ["lamp", "desk-lamp", "blinds", "clock", "bed"];
 
 /** The bedroom around the existing Night flow. NightRun still owns all incident state and actions. */
-export function NightWorld({ entryId, run, forceFallback }: { entryId?: string; run: RunProps; forceFallback?: boolean }) {
+export function NightWorld({ entryId, run = {}, setup, forceFallback }: {
+  entryId?: string; run?: RunProps; setup?: ReactNode; forceFallback?: boolean;
+}) {
   const [stage, setStage] = useState<NightStage>();
   const [noIntro, setNoIntro] = useState(true);
   const [fallback, setFallback] = useState(Boolean(forceFallback));
@@ -38,15 +40,16 @@ export function NightWorld({ entryId, run, forceFallback }: { entryId?: string; 
     queueMicrotask(() => setSnoozed(call.snoozed));
     return slot ? createPortal(<NightPhone view={call} held={held} />, slot) : null;
   }, [slot, held]);
-  const phone = stage === undefined ? undefined : stage === "board" ? "none" as const : stage === "briefing" ? "active" as const : snoozed ? "snoozed" as const : "ringing" as const;
+  const phone = stage === "page" ? snoozed ? "snoozed" as const : "ringing" as const
+    : stage === "briefing" ? "active" as const : "none" as const;
   const presentation = fallback ? undefined : renderCall;
 
   return (
-    <WorldShell config={bedroom} availability={availability} alwaysShowPanel={false} forceFallback={forceFallback} objective={objective} displays={displays}
+    <WorldShell config={bedroom} availability={availability} alwaysShowPanel={Boolean(setup) || stage === undefined} forceFallback={forceFallback} objective={objective} displays={displays}
       phone={fallback ? undefined : phone} skipWake={noIntro} onPhoneSlot={setSlot} onPhoneHeld={setHeld} onFallbackChange={setFallback}>
-      {entryId !== undefined
+      {setup ?? (entryId !== undefined
         ? <FixtureNight key={entryId} entryId={entryId} onStage={setStage} renderCall={presentation} />
-        : <NightRun key={run.incidentId ?? (run.apiUser ? "api" : "fixture")} {...run} onStage={setStage} renderCall={presentation} />}
+        : <NightRun key={run.incidentId ?? (run.apiUser ? "api" : "fixture")} {...run} onStage={setStage} renderCall={presentation} morningPath="/morning/3d" />)}
     </WorldShell>
   );
 }

@@ -99,4 +99,6 @@ test("3D Night and Morning drive the real incident through the shared actions", 
   await page.goto(`/night/3d?incident=${id}&no3d=1`);
   await expect(page.getByRole("heading", { name: "Checkout incident" })).toBeVisible();
   expect((await state()).status).toBe(after.status);
+  await page.goto(`/incident/${id}`);
+  await expect(page).toHaveURL(`/morning/3d?incident=${id}`);
 });

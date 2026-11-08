@@ -15,7 +15,10 @@ export default async function MorningWorldPage({ searchParams }: { searchParams:
   const forceFallback = no3d === "1";
   if (fixture === "1") return <MorningWorld forceFallback={forceFallback} fixture={{ role: one(role), evidence: one(evidence), handoff: one(handoff), pr: one(pr) }} />;
   const config = (await teamEntryApi());
-  if (config && !isTeamIncidentId(incident)) return <HandedToYou config={config} base="/morning/3d" />;
+  if (config && !isTeamIncidentId(incident)) return (
+    <MorningWorld forceFallback={forceFallback} handoffs={<HandedToYou config={config} base="/morning/3d" />} />
+  );
+  if (incident === undefined) return <MorningWorld forceFallback={forceFallback} />;
   if (!config || !isTeamIncidentId(incident)) {
     return <main className="landing"><h1>Morning office unavailable</h1><p>Open a team incident and complete the Night handoff to continue.</p>
       <Link className="button" href="/start">Back to simulation entry</Link></main>;
