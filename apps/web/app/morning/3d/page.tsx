@@ -3,6 +3,7 @@ import "../../world/world.css";
 import { demoEnabled, devRelayBase, teamEntryApi } from "../../night/demo-config";
 import { isTeamIncidentId } from "../../night/team-entry-contract";
 import { HandedToYou } from "../handed-to-you";
+import { loadPilot } from "../pilot";
 import { MorningWorld } from "./morning-world";
 
 export const dynamic = "force-dynamic";
@@ -19,5 +20,6 @@ export default async function MorningWorldPage({ searchParams }: { searchParams:
       <Link className="button" href="/start">Back to simulation entry</Link></main>;
   }
   const relayBase = devRelayBase() ?? config.origin.replace(/^http:/, "ws:");
-  return <MorningWorld forceFallback={forceFallback} team={{ incidentId: incident, user: config.user, relayBase, rehearsalGitHub: process.env.MORNING_GITHUB_FIXTURE === "1" }} />;
+  const pilot = await loadPilot(config);
+  return <MorningWorld forceFallback={forceFallback} team={{ incidentId: incident, user: config.user, relayBase, rehearsalGitHub: process.env.MORNING_GITHUB_FIXTURE === "1", pilot }} />;
 }

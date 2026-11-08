@@ -3,6 +3,7 @@ import { devRelayBase, teamEntryApi } from "../night/demo-config";
 import { isTeamIncidentId } from "../night/team-entry-contract";
 import { HandedToYou } from "./handed-to-you";
 import { MorningWorkspace } from "./morning-workspace";
+import { loadPilot } from "./pilot";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,7 @@ export default async function MorningPage({ searchParams }: { searchParams: Prom
   );
 
   const relayBase = devRelayBase() ?? config.origin.replace(/^http:/, "ws:");
+  const pilot = await loadPilot(config);
   return <MorningWorkspace key={incident} incidentId={incident} user={config.user} relayBase={relayBase}
-    rehearsalGitHub={process.env.MORNING_GITHUB_FIXTURE === "1"} />;
+    rehearsalGitHub={process.env.MORNING_GITHUB_FIXTURE === "1"} pilot={pilot} />;
 }

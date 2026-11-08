@@ -6,9 +6,10 @@ import { useNightApi } from "../night/use-night-api";
 import { IncidentCheck } from "./incident-check";
 import { Connections, MorningDebrief, PrivateEvidence } from "./morning-after";
 import { HandoffReview, MorningReview } from "./morning-review";
+import type { Pilot } from "./pilot";
 
-export function MorningWorkspace({ incidentId, user, relayBase, rehearsalGitHub }: {
-  incidentId: string; user: string; relayBase: string; rehearsalGitHub: boolean;
+export function MorningWorkspace({ incidentId, user, relayBase, rehearsalGitHub, pilot }: {
+  incidentId: string; user: string; relayBase: string; rehearsalGitHub: boolean; pilot?: Pilot;
 }) {
   const api = useNightApi(true, incidentId);
   const incident = api.snapshot?.incident;
@@ -47,7 +48,7 @@ export function MorningWorkspace({ incidentId, user, relayBase, rehearsalGitHub 
         {incident?.handoff ? <div className="phase-grid">
           <HandoffReview incident={incidentId} handoff={incident.handoff} user={user} unavailable={unavailable} onChange={api.refresh} />
           <IncidentCheck incident={incidentId} fixed={fixed} unavailable={unavailable} />
-          <MorningReview incident={incident} unavailable={unavailable} onChange={api.refresh} onDeploy={() => api.act({ action: "deploy_fix" })} />
+          <MorningReview incident={incident} unavailable={unavailable} onChange={api.refresh} onDeploy={() => api.act({ action: "deploy_fix" })} pilot={pilot} />
           {fixed ? <>
             <MorningDebrief incident={incident} user={user} relayBase={relayBase} unavailable={unavailable} refresh={api.refresh} />
             <PrivateEvidence incident={incident} />

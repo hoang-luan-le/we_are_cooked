@@ -903,6 +903,15 @@ def test_a_merged_fix_cannot_be_swapped_for_another_pr():
         assert response.status_code == 409 and response.json()["code"] == "pr_already_linked"
 
 
+def test_pilot_repo_tells_the_morning_pair_where_the_code_is():
+    with Harness(github=FakeGitHub()) as h:
+        assert h.client.get("/api/pr/pilot").json() == {
+            "repo": PILOT, "url": f"https://github.com/{PILOT}", "clone_url": f"https://github.com/{PILOT}.git",
+            "base_branch": SPEC.pilot.base_branch}
+    with Harness() as h:  # PILOT_REPOS empty
+        assert h.client.get("/api/pr/pilot").json()["repo"] is None
+
+
 def test_github_reads_are_cached():
     github = FakeGitHub()
     with Harness(github=github) as h:
