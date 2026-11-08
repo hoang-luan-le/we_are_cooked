@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { type ReactNode, useEffect, useEffectEvent, useRef, useState } from "react";
 import type { DanaCall, DanaMode } from "../../../../packages/contracts/dana";
 import { IncidentCheck } from "../morning/incident-check";
 import { DanaBriefing, useDanaBriefing } from "./dana-briefing";
@@ -16,7 +16,15 @@ type SupportCall = Exclude<DanaCall, "briefing">;
 
 export type NightStage = "page" | "briefing" | "board";
 
-export function NightRun({ apiUser, relayBase, entry, incidentId, onStage }: { apiUser?: string; relayBase?: string; entry?: FixtureEntry; incidentId?: string; onStage?: (stage: NightStage) => void }) {
+/** What a presentation other than the 2D call panel needs. The incident rules stay in NightRun. */
+export type NightCallView = {
+  stage: "page" | "briefing"; connecting: boolean; snoozed: boolean; canAnswer: boolean; canSnooze: boolean;
+  error?: string; retry?: () => void;
+  answer: () => void; snooze: () => void; end: () => void; retryVoice?: () => void;
+  briefing: ReturnType<typeof useDanaBriefing>;
+};
+
+export function NightRun({ apiUser, relayBase, entry, incidentId, onStage, renderCall }: { apiUser?: string; relayBase?: string; entry?: FixtureEntry; incidentId?: string; onStage?: (stage: NightStage) => void; renderCall?: (call: NightCallView) => ReactNode }) {
   const [stage, setStage] = useState<"page" | "briefing" | "board">(entry?.briefingPending ? "briefing" : entry?.answered ? "board" : "page");
   const [answerPending, setAnswerPending] = useState(false);
   const [snoozed, setSnoozed] = useState(false);
@@ -157,6 +165,24 @@ export function NightRun({ apiUser, relayBase, entry, incidentId, onStage }: { a
   const answerDisabled = api.pending || api.readError || (incident && !incident.allowed_actions.includes("answer"));
   const callSnoozed = incident?.ringing === undefined ? snoozed : !incident.ringing;
   const cohortRole = entry?.kind === "cohort" ? fixtureCohort.members.find(member => member.name === "You")?.role : undefined;
+
+  if (renderCall && visibleStage !== "board" && !supportCall) {
+    return <>{renderCall({
+      stage: visibleStage, connecting: recoveringAnswer || (Boolean(apiUser) && !incident), snoozed: Boolean(callSnoozed),
+      canAnswer: !answerDisabled && (!apiUser || Boolean(incident)),
+      canSnooze: !callSnoozed && !api.pending && !api.readError && (!incident || incident.allowed_actions.includes("snooze")),
+      error: api.readError || api.actionError ? api.actionError || "The incident is unavailable." : undefined,
+      retry: api.retryAction ? () => { if (api.retryAction) void perform(api.retryAction); } : api.readError ? api.refresh : undefined,
+      answer: () => void perform({ action: "answer" }, relayBase ? "voice" : "fixture"),
+      snooze: () => void perform({ action: "snooze" }),
+      end: openDashboard,
+      retryVoice: relayBase ? () => briefing.startRelay({
+        base: relayBase, mode: "voice", audio: prepareDanaAudio(),
+        session: apiUser && incident ? { incidentId: incident.incident_id, level: incident.level, user: apiUser } : undefined,
+      }) : undefined,
+      briefing,
+    })}</>;
+  }
 
   return (
     <>

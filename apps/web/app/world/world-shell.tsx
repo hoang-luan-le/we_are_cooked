@@ -3,28 +3,37 @@
 import { useRouter } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { mapHeading, type PanelId, type SceneConfig, toMinimap } from "./world-contract";
-import type { WorldEngine, WorldMode, WorldPrompt } from "./world-engine";
+import type { DisplayContent } from "./world-display";
+import type { PhoneState, WorldEngine, WorldMode, WorldPrompt } from "./world-engine";
 
 export type Availability = { ids: string[]; walk: boolean; ringing: boolean };
+export type Objective = { text: string; at?: readonly [number, number] };
 type Pose = { u: number; v: number; heading: number };
 
 const panelTitles: Record<PanelId, string> = {
   "incident-board": "Incident board", briefing: "Dana's briefing",
   "workstation-1": "Workstation 1", "workstation-2": "Workstation 2",
 };
-const objectives = [
-  { text: "Go inside through the entrance doors", at: [0, 0] },
-  { text: "Join Dana's briefing in the meeting room", at: [-2, 7.8] },
-  { text: "Go to your workstation", at: [4.5, 9.2] },
-] as const;
 
-export function WorldShell({ config, availability, alwaysShowPanel, forceFallback, onPanelChange, children }: {
+export function WorldShell({ config, availability, alwaysShowPanel, forceFallback, objective, displays, phone, skipWake, onPhoneSlot, onPhoneHeld, meeting, onPanelChange, onDoor, onFallbackChange, children }: {
   config: SceneConfig;
   availability: Availability;
   /** The 2D flow is the active step, for example the incoming call. */
   alwaysShowPanel: boolean;
   forceFallback?: boolean;
+  objective?: Objective;
+  /** Screens painted from app state, keyed by GLB mesh name. */
+  displays?: Record<string, DisplayContent>;
+  /** The handset's call state. Undefined outside the Night call. */
+  phone?: PhoneState;
+  /** Go straight to the handset in hand, without the wake-up. */
+  skipWake?: boolean;
+  onPhoneSlot?: (element: HTMLElement | null) => void;
+  onPhoneHeld?: (held: boolean) => void;
+  meeting?: { open: boolean; display: boolean; complete: boolean };
   onPanelChange?: (panel: PanelId | undefined) => void;
+  onDoor?: (id: string, open: boolean) => void;
+  onFallbackChange?: (fallback: boolean) => void;
   children: ReactNode;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -39,22 +48,32 @@ export function WorldShell({ config, availability, alwaysShowPanel, forceFallbac
   const [mode, setMode] = useState<WorldMode>("loading");
   const [pose, setPose] = useState<Pose>();
   const [locked, setLocked] = useState(false);
-  const [objective, setObjective] = useState(0);
+  const [firstPerson, setFirstPerson] = useState(true);
+  const [message, setMessage] = useState("");
+  const [wake, setWake] = useState<"closed" | "open" | "done">("done");
+  const [callBusy, setCallBusy] = useState(false);
+  const slotRef = useRef<HTMLDivElement>(null);
+  const skipRef = useRef(skipWake);
+  skipRef.current = skipWake;
+  const heldHandler = useRef(onPhoneHeld);
+  heldHandler.current = onPhoneHeld;
   const latest = useRef(availability);
   latest.current = availability;
-  const panelOpen = useRef<PanelId>(undefined);
+  const latestDisplays = useRef(displays);
+  latestDisplays.current = displays;
+  const doorHandler = useRef(onDoor);
+  doorHandler.current = onDoor;
   const fallback = view2d || Boolean(error);
 
+  useEffect(() => { onFallbackChange?.(fallback); }, [fallback, onFallbackChange]);
+
   const openPanel = useCallback((next: PanelId) => {
-    panelOpen.current = next;
     setPanel(next);
     onPanelChange?.(next);
-    if (next === "briefing") setObjective(current => Math.max(current, 2));
     engineRef.current?.setPanelOpen(true);
   }, [onPanelChange]);
 
   const closePanel = useCallback(() => {
-    panelOpen.current = undefined;
     setPanel(undefined);
     onPanelChange?.(undefined);
     engineRef.current?.setPanelOpen(false);
@@ -73,14 +92,26 @@ export function WorldShell({ config, availability, alwaysShowPanel, forceFallbac
             setReady(true);
             element.focus({ preventScroll: true });
             engine?.setAvailability(latest.current.ids, latest.current.walk, latest.current.ringing);
+            for (const [mesh, content] of Object.entries(latestDisplays.current ?? {})) engine?.setDisplay(mesh, content);
           },
           onError: setError,
           onPrompts(next, nextMode) { setPrompts(next); setMode(nextMode); },
           onPose(x, z, fx, fz) { setPose({ ...toMinimap(x, z), heading: mapHeading(fx, fz) }); },
           onPanel: openPanel,
-          onPhone() { panelRef.current?.querySelector<HTMLElement>(".call-panel button:not(:disabled)")?.focus(); },
-          onDoor(id, open) { if (open && id.startsWith("office_entrance")) setObjective(current => Math.max(current, 1)); },
+          onPhoneRect(rect) {
+            const slot = slotRef.current;
+            if (slot) {
+              slot.hidden = !rect;
+              if (rect) slot.style.cssText = `left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px;--u:${rect.height / 844}px`;
+            }
+            heldHandler.current?.(Boolean(rect));
+          },
+          onCallBusy: setCallBusy,
+          onDoor(id, open) { doorHandler.current?.(id, open); },
           onLock: setLocked,
+          onMessage: setMessage,
+          onView: setFirstPerson,
+          onIntro: setWake,
         });
         engineRef.current = engine;
         if (new URLSearchParams(location.search).has("worldDebug")) Object.assign(window, { __world: engine });
@@ -101,17 +132,37 @@ export function WorldShell({ config, availability, alwaysShowPanel, forceFallbac
   }, [availability]);
 
   useEffect(() => {
+    if (ready && phone) engineRef.current?.setPhone(phone, Boolean(skipRef.current));
+  }, [phone, ready]);
+
+  const slotCallback = useCallback((element: HTMLDivElement | null) => {
+    slotRef.current = element;
+    onPhoneSlot?.(element);
+  }, [onPhoneSlot]);
+
+  useEffect(() => {
+    for (const [mesh, content] of Object.entries(displays ?? {})) engineRef.current?.setDisplay(mesh, content);
+  }, [displays, ready]);
+
+  useEffect(() => {
+    if (meeting && ready) engineRef.current?.setMeeting(meeting.open, meeting.display, meeting.complete);
+  }, [meeting, ready]);
+
+  useEffect(() => {
+    if (!message) return;
+    const timer = window.setTimeout(() => setMessage(""), 5000);
+    return () => window.clearTimeout(timer);
+  }, [message]);
+
+  useEffect(() => {
     if (!panel) return;
-    const root = panelRef.current;
-    if (!root) return;
-    if (panel === "briefing") root.querySelector('[aria-label="Night shift handoff"]')?.scrollIntoView({ block: "start" });
-    root.querySelector<HTMLElement>(".world-panel-close")?.focus({ preventScroll: true });
+    panelRef.current?.querySelector<HTMLElement>(".world-panel-close")?.focus({ preventScroll: true });
   }, [panel]);
 
   const showPanel = fallback || alwaysShowPanel || Boolean(panel);
   const full = fallback || Boolean(panel);
   const seated = mode === "seated";
-  const seatPanelLabel = "Open the panel again";
+  const movable = mode === "walk" || seated;
 
   return (
     <div className="world" data-fallback={fallback || undefined}>
@@ -124,43 +175,53 @@ export function WorldShell({ config, availability, alwaysShowPanel, forceFallbac
         </div>
       ) : (
         <canvas ref={canvas} className="world-canvas" tabIndex={0}
-          aria-label={`${config.title}. Use W A S D or arrow keys to move, E to interact.`} />
+          aria-label={`${config.title}. W A S D or arrow keys to move, E to interact, V to change view.`} />
       )}
 
       {!fallback ? (
         <>
-          <div className="world-topbar">
-            <strong>{config.title}</strong>
-            <button onClick={() => setView2d(true)}>Use 2D view</button>
-          </div>
+          {!callBusy ? (
+            <div className="world-topbar">
+              <strong>{config.title}</strong>
+              <button onClick={() => setView2d(true)}>Use 2D view</button>
+            </div>
+          ) : null}
           {!ready ? <p className="world-loading" role="status">Loading the 3D scene…</p> : null}
+          {wake !== "done" ? <div className="world-eyelids" data-state={wake} aria-hidden="true"><b /><i /><i /></div> : null}
+          {wake !== "done" ? <button className="world-skip" onClick={() => engineRef.current?.skipIntro()}>Skip wake-up</button> : null}
 
-          {config.id === "office" && !panel ? <Minimap pose={pose} objective={objective} /> : null}
+          {config.id === "office" && !panel ? <Minimap pose={pose} goal={objective?.at} /> : null}
 
-          {!panel && ready ? (
+          <div ref={slotCallback} className="world-phone" hidden />
+
+          {!panel && ready && !callBusy ? (
             <div className="world-hud">
-              {config.id === "office" ? <p className="world-objective" role="status">{objectives[objective].text}</p> : null}
-              {mode === "walk" && !locked ? <p className="world-hint">Click the room to look around. W A S D to move, E to interact.</p> : null}
+              {objective ? <p className="world-objective" role="status">{objective.text}</p> : null}
+              {message ? <p className="world-message" role="status">{message}</p> : null}
+              {mode === "walk" && !locked ? <p className="world-hint">Click the room to look around. W A S D to move, E to interact, scroll to zoom.</p> : null}
               {locked ? <p className="world-hint">Esc releases the mouse.</p> : null}
               <div className="world-actions">
-                {prompts.map((prompt, index) => (
+                {prompts.slice(0, 3).map((prompt, index) => (
                   <button key={prompt.id} className={index === 0 ? "primary" : undefined} onClick={() => engineRef.current?.activate(prompt.id)}>
                     {index === 0 ? <kbd>E</kbd> : null} {prompt.label}
                   </button>
                 ))}
                 {seated ? <button className="primary" onClick={() => engineRef.current?.standUp()}><kbd>E</kbd> Stand up</button> : null}
-                {seated ? <button onClick={() => engineRef.current?.reopenPanel()}>{seatPanelLabel}</button> : null}
+                {seated && engineRef.current?.canReopenPanel ? <button onClick={() => engineRef.current?.reopenPanel()}>Open the panel again</button> : null}
               </div>
-              {(mode === "walk" || seated) && config.targets.some(target => target.kind !== "door" && target.kind !== "phone") ? (
-                <details className="world-goto">
-                  <summary>Go to without walking</summary>
-                  <div className="world-actions">
-                    {config.targets.filter(target => target.kind !== "door" && target.kind !== "phone" && availability.ids.includes(target.id)).map(target => (
-                      <button key={target.id} onClick={() => engineRef.current?.goTo(target.id)}>{target.label}</button>
-                    ))}
-                  </div>
-                </details>
-              ) : null}
+              <div className="world-actions">
+                <button onClick={() => engineRef.current?.toggleView()}>{firstPerson ? "Switch to third person" : "Switch to first person"}</button>
+                {movable && config.targets.some(target => target.kind === "seat" || target.kind === "panel") ? (
+                  <details className="world-goto">
+                    <summary>Go to without walking</summary>
+                    <div className="world-actions">
+                      {config.targets.filter(target => (target.kind === "seat" || target.kind === "panel") && target.id !== "projector" && availability.ids.includes(target.id)).map(target => (
+                        <button key={target.id} onClick={() => engineRef.current?.goTo(target.id)}>{target.label}</button>
+                      ))}
+                    </div>
+                  </details>
+                ) : null}
+              </div>
             </div>
           ) : null}
         </>
@@ -188,8 +249,8 @@ export function WorldShell({ config, availability, alwaysShowPanel, forceFallbac
   );
 }
 
-function Minimap({ pose, objective }: { pose?: Pose; objective: number }) {
-  const goal = toMinimap(objectives[objective].at[0], objectives[objective].at[1]);
+function Minimap({ pose, goal }: { pose?: Pose; goal?: readonly [number, number] }) {
+  const target = goal ? toMinimap(goal[0], goal[1]) : undefined;
   const lobby = toMinimap(7, 12);
   const end = toMinimap(-7, 0);
   const room = (x1: number, z1: number, x2: number, z2: number) => {
@@ -205,7 +266,8 @@ function Minimap({ pose, objective }: { pose?: Pose; objective: number }) {
       <text x="122" y="88" className="map-label">Dana</text>
       <text x="38" y="88" className="map-label">Desks</text>
       <text x="90" y="150" className="map-label" textAnchor="middle">Lobby</text>
-      <circle cx={goal.u} cy={goal.v} r="5" className="map-goal" data-testid="map-goal" />
+      {target ? <circle cx={target.u} cy={target.v} r="5" className="map-goal" data-testid="map-goal"
+        data-u={target.u.toFixed(1)} data-v={target.v.toFixed(1)} /> : null}
       {pose ? <path d="M0 -8 L5.5 6 L0 3 L-5.5 6 Z" className="map-player" data-testid="map-player"
         data-u={pose.u.toFixed(1)} data-v={pose.v.toFixed(1)} data-heading={pose.heading.toFixed(0)}
         transform={`translate(${pose.u} ${pose.v}) rotate(${pose.heading})`} /> : null}

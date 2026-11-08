@@ -6,11 +6,12 @@ import { MorningWorld } from "./morning-world";
 
 export const dynamic = "force-dynamic";
 
-export default async function MorningWorldPage({ searchParams }: { searchParams: Promise<{ incident?: string | string[]; fixture?: string | string[]; no3d?: string | string[] }> }) {
+export default async function MorningWorldPage({ searchParams }: { searchParams: Promise<{ incident?: string | string[]; fixture?: string | string[]; no3d?: string | string[]; role?: string | string[]; evidence?: string | string[]; handoff?: string | string[]; pr?: string | string[] }> }) {
   if (!demoEnabled()) return <main className="landing"><h1>Morning is unavailable here.</h1><Link className="button" href="/">Back to Incident Lab</Link></main>;
-  const { incident, fixture, no3d } = await searchParams;
+  const { incident, fixture, no3d, role, evidence, handoff, pr } = await searchParams;
+  const one = (value?: string | string[]) => (typeof value === "string" ? value : undefined);
   const forceFallback = no3d === "1";
-  if (fixture === "1") return <MorningWorld forceFallback={forceFallback} />;
+  if (fixture === "1") return <MorningWorld forceFallback={forceFallback} fixture={{ role: one(role), evidence: one(evidence), handoff: one(handoff), pr: one(pr) }} />;
   const config = teamEntryApi();
   if (!config || !isTeamIncidentId(incident)) {
     return <main className="landing"><h1>Morning office unavailable</h1><p>Open a team incident and complete the Night handoff to continue.</p>
