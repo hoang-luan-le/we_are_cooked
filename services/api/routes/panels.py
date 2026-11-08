@@ -5,17 +5,20 @@ POST .../action {"action": "open_panel"} so Dana's facts unlock.
 """
 from __future__ import annotations
 
+import logging
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
+from dberrors import DB_ERRORS
 from engine.panels import (
     LEVELS, MAX_HISTORY_WINDOW_S, MAX_LOG_LINES, MIN_HISTORY_STEP_S,
-    deploy_history, metrics_history, recent_logs, runbook, runbook_index,
+    deploy_history, history_window, metrics_history, recent_logs, runbook, runbook_index,
 )
 
 from .deps import Runtime, get_runtime, translate_store_errors
 
+logger = logging.getLogger("incident_lab.panels")
 router = APIRouter(prefix="/api/incident", tags=["panels"])
 
 
@@ -57,9 +60,24 @@ def get_runbook(incident_id: str, name: str, rt: Runtime = Depends(get_runtime))
 @router.get("/{incident_id}/metrics/history")
 def get_metrics_history(
     incident_id: str,
+    request: Request,
     window_s: int = Query(default=900, ge=MIN_HISTORY_STEP_S, le=MAX_HISTORY_WINDOW_S),
     step_s: int = Query(default=10, ge=MIN_HISTORY_STEP_S, le=300),
     rt: Runtime = Depends(get_runtime),
 ) -> dict:
+    """With Tiger Data: samples come from the incident_metrics hypertable (time_bucket), `source: tigerdata`."""
     state, now = translate_store_errors(lambda: rt.store.get(incident_id), incident_id)
-    return metrics_history(state, rt.scenario, now, window_s=window_s, step_s=step_s)
+    return metrics_history(state, rt.scenario, now, window_s=window_s, step_s=step_s,
+                           stored=_stored_buckets(request, state, now, window_s, step_s))
+
+
+def _stored_buckets(request: Request, state, now: float, window_s: int, step_s: int) -> dict[int, dict] | None:
+    db = request.app.state.db
+    if not db.supports_metrics:
+        return None
+    start, _, step = history_window(now, window_s, step_s)
+    try:
+        return db.metrics_buckets(state.incident_id, max(start, state.paged_at), now, step)
+    except DB_ERRORS:
+        logger.exception("Could not read metrics history from Tiger Data; using computed values")
+        return None

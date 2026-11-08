@@ -6,7 +6,6 @@ Only the handle is ever shown to other people; the Auth0 subject stays server-si
 from __future__ import annotations
 
 import logging
-import sqlite3
 import threading
 import time
 from typing import Any, Callable
@@ -15,6 +14,7 @@ import httpx
 import jwt
 
 import tls
+from dberrors import DB_ERRORS, UNIQUE_VIOLATIONS
 
 logger = logging.getLogger("incident_lab.accounts")
 JWKS_CACHE_S = 600.0
@@ -99,9 +99,9 @@ class AccountStore:
             if self._db is not None:
                 try:
                     self._db.save_account(sub, handle, self._clock())
-                except sqlite3.IntegrityError as exc:
+                except UNIQUE_VIOLATIONS as exc:
                     raise HandleTaken(handle) from exc
-                except sqlite3.Error:
+                except DB_ERRORS:
                     logger.exception("Could not save the account link")
             self._by_sub = {**self._by_sub, sub: handle}
             return handle

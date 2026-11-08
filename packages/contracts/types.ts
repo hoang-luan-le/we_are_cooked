@@ -182,8 +182,12 @@ export interface DeployHistory { live_version: string; releases: Release[] }
 // GET /api/incident/{id}/runbooks -> { runbooks: {name, title}[] };  GET .../runbooks/{name} -> Runbook
 export interface Runbook { name: string; title: string; steps: string[] }
 // GET /api/incident/{id}/metrics/history?window_s=5..3600&step_s=5..300 -> MetricsHistory
-export interface MetricsSample extends Metrics { sim_time: string }     // "HH:MM:SS"
+export interface MetricsSample extends Metrics {
+  sim_time: string;                        // "HH:MM:SS"
+  source: "tigerdata" | "computed";        // tigerdata = read from the incident_metrics hypertable
+}
 export interface MetricsHistory {
+  source: "tigerdata" | "computed";        // tigerdata when any sample came from Tiger Data
   samples: MetricsSample[];                // may start before the page: errors climb from the bad release
   events: { label: string; sim_time: string }[];
   baseline: Metrics;

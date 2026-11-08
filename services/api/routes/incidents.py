@@ -55,9 +55,14 @@ def start_incident(
 
 
 @router.get("/{incident_id}")
-def get_incident(incident_id: str, rt: Runtime = Depends(get_runtime)) -> dict:
+def get_incident(incident_id: str, request: Request, rt: Runtime = Depends(get_runtime)) -> dict:
+    """Polled every 2-3 s. With Tiger Data, each poll also records one metrics sample per second."""
     state, now = translate_store_errors(lambda: rt.store.get(incident_id), incident_id)
-    return state_view(state, rt.scenario, now)
+    view = state_view(state, rt.scenario, now)
+    recorder = getattr(request.app.state, "metrics_recorder", None)
+    if recorder is not None:
+        recorder.sample(incident_id, now, view["metrics"])
+    return view
 
 
 @router.get("/{incident_id}/facts")

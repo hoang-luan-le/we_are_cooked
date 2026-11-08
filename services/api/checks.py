@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import logging
-import sqlite3
 import threading
 import time
+from dberrors import DB_ERRORS
 from typing import Callable
 
 logger = logging.getLogger("incident_lab.checks")
@@ -27,7 +27,7 @@ class CheckStore:
             if self._db is not None:
                 try:
                     self._db.save_check(handle, incident_id, stage, choice, explanation, score, self._clock())
-                except sqlite3.Error:
+                except DB_ERRORS:
                     logger.exception("Could not save a check answer")
             entry = {"choice": choice, "explanation": explanation, "score": score}
             self._answers = {**self._answers, (handle, incident_id, stage): entry}

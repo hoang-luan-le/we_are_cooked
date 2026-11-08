@@ -28,7 +28,9 @@ from fastapi.testclient import TestClient  # noqa: E402
 import adzuna  # noqa: E402
 import jwt  # noqa: E402
 from config import DEFAULT_DEMO_TEAM, DEFAULT_SCENARIO_PATH, Settings  # noqa: E402
+from engine import panels  # noqa: E402
 from engine.snapshot import from_snapshot, to_snapshot  # noqa: E402
+from metrics_recorder import MetricsRecorder  # noqa: E402
 from engine.state import PullRequest  # noqa: E402
 from main import create_app  # noqa: E402
 from scenario_loader import ScenarioError, load_scenario  # noqa: E402
@@ -1146,6 +1148,46 @@ def test_auth0_handles_survive_a_restart():
             assert h.client.get("/api/me", headers=tenant.token("google-oauth2|1")).json()["handle"] == "maya-demo"
     finally:
         Path(path).unlink(missing_ok=True)
+
+
+# ---------- Tiger Data: metrics hypertable (offline: a fake database) ----------
+
+class FakeMetricsDB:
+    def __init__(self):
+        self.rows = []
+
+    def record_metrics(self, rows):
+        self.rows.extend(rows)
+
+
+def test_history_uses_tigerdata_buckets_where_recorded():
+    with Harness() as h:
+        h.ok("answer")
+        h.clock.advance(60)
+        state, now = h.app.state.runtime.store.get(INC)
+        step = 10
+        recorded = int(now // step) * step  # the bucket holding "now"
+        stored = {recorded: {"error_rate": 12.34, "orders_per_min": 333.4, "p95_ms": 999.6}}
+        history = panels.metrics_history(state, SCENARIO, now, window_s=120, step_s=step, stored=stored)
+    assert history["source"] == "tigerdata"
+    last = history["samples"][-1]
+    assert last["source"] == "tigerdata" and last["error_rate"] == 12.3 and last["p95_ms"] == 1000
+    assert all(s["source"] == "computed" for s in history["samples"][:-2])  # gaps fall back to the curve
+    plain = panels.metrics_history(state, SCENARIO, now, window_s=120, step_s=step)
+    assert plain["source"] == "computed"
+
+
+def test_recorder_writes_one_sample_per_second_off_the_request_path():
+    db = FakeMetricsDB()
+    recorder = MetricsRecorder(db)
+    try:
+        metrics = {"error_rate": 27.1, "orders_per_min": 307, "p95_ms": 1291}
+        for now in (1000.1, 1000.5, 1000.9, 1001.2, 1001.3):  # two distinct seconds
+            recorder.sample(INC, now, metrics)
+        recorder.flush()
+    finally:
+        recorder.close()
+    assert [row[1] for row in db.rows] == [1000.0, 1001.0] and recorder.written == 2
 
 
 # ---------- starting incidents and teammates ----------

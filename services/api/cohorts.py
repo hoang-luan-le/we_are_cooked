@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import logging
 import secrets
-import sqlite3
 import threading
 import time
 from dataclasses import dataclass, replace
+from dberrors import DB_ERRORS
 from typing import Callable
 
 logger = logging.getLogger("incident_lab.cohorts")
@@ -90,7 +90,7 @@ class CohortStore:
             return
         try:
             write(self._db)
-        except sqlite3.Error:
+        except DB_ERRORS:
             # Keep the demo going from memory; the failure is logged with its traceback.
             logger.exception("Could not save a cohort change")
 
