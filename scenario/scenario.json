@@ -208,6 +208,33 @@
       ]
     }
   },
+  "job_searches": [
+    "site reliability engineer",
+    "devops engineer",
+    "junior software developer",
+    "production support analyst"
+  ],
+  "check": {
+    "question": "It's 2 a.m. Checkout errors jumped right after tonight's release. What do you do first?",
+    "choices": [
+      {
+        "id": "a",
+        "text": "Roll back the release to stop the damage, then find the cause."
+      },
+      {
+        "id": "b",
+        "text": "Read the logs until you find the exact bug, before changing anything."
+      },
+      {
+        "id": "c",
+        "text": "Restart the checkout service."
+      },
+      {
+        "id": "d",
+        "text": "Wait a few minutes to see if it recovers on its own."
+      }
+    ]
+  },
   "answer_key": {
     "root_cause": "v2.14.0 added loyalty-tier discounts. loyalty_percent reads customer.profile[\"tier\"], guests have no tier, so checkout raises KeyError: 'tier' at checkout/pricing.py:19.",
     "fix": "A missing or unknown tier gives a 0% loyalty discount. Tests must reject a lazy try/except that returns a $0 order total.",
@@ -253,6 +280,12 @@
         "monitor",
         "watch"
       ]
+    },
+    "check_scores": {
+      "a": 4,
+      "b": 2,
+      "c": 0,
+      "d": 0
     }
   }
 }

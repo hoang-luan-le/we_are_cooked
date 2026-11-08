@@ -11,6 +11,7 @@ import json
 import sqlite3
 import sys
 import tempfile
+from datetime import datetime, timezone
 import traceback
 from dataclasses import replace
 from pathlib import Path
@@ -22,6 +23,7 @@ if str(API_DIR) not in sys.path:
 import httpx  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
+import adzuna  # noqa: E402
 from config import DEFAULT_DEMO_TEAM, DEFAULT_SCENARIO_PATH, Settings  # noqa: E402
 from engine.snapshot import from_snapshot, to_snapshot  # noqa: E402
 from engine.state import PullRequest  # noqa: E402
@@ -109,11 +111,13 @@ class Harness:
 
     def __init__(self, scenario_path: Path = DEFAULT_SCENARIO_PATH, auth0_domain: str = "",
                  sqlite_path: str = ":memory:", database_url: str = "", clock: FakeClock | None = None,
-                 demo_team: tuple[str, ...] = DEFAULT_DEMO_TEAM, github: "FakeGitHub | None" = None) -> None:
+                 demo_team: tuple[str, ...] = DEFAULT_DEMO_TEAM, github: "FakeGitHub | None" = None,
+                 jobs_path: Path | None = None) -> None:
         self.clock = clock or FakeClock()
         settings = Settings(scenario_path=scenario_path, internal_key=INTERNAL_KEY, auth0_domain=auth0_domain,
                             sqlite_path=sqlite_path, database_url=database_url, demo_team=demo_team,
-                            pilot_repos=(PILOT,) if github else (), mentor_github=("mentor-ana",))
+                            pilot_repos=(PILOT,) if github else (), mentor_github=("mentor-ana",),
+                            jobs_snapshot_path=jobs_path or API_DIR / "tests" / "no-jobs-snapshot.json")
         transport = httpx.MockTransport(github.handle) if github else None
         self.app = create_app(settings, clock=self.clock, github_transport=transport)
         self.client = TestClient(self.app)
@@ -940,6 +944,66 @@ def test_profiles_and_answers_survive_a_restart():
             assert h.client.get("/api/network", headers=TEAM).json()["cards"][0]["contact"] == "tung@example.com"
     finally:
         Path(path).unlink(missing_ok=True)
+
+
+# ---------- jobs snapshot and before/after check ----------
+
+def _fake_adzuna(request: httpx.Request) -> httpx.Response:
+    if request.url.params.get("app_key") != "k":
+        return httpx.Response(401, json={"error": "bad key"})
+    return httpx.Response(200, json={"count": 42, "results": [{
+        "title": f"Junior {request.url.params['what']}", "company": {"display_name": "Example Employer"},
+        "location": {"display_name": "Calgary, Alberta"}, "created": "2026-11-01T10:00:00Z",
+        "redirect_url": "https://www.adzuna.ca/details/1", "salary_min": 60000, "salary_max": 75000}]})
+
+
+def test_jobs_come_from_a_saved_snapshot_never_invented():
+    with Harness() as h:
+        empty = h.client.get("/api/jobs").json()
+        assert empty["searches"] == [] and empty["fetched_at"] is None and "adzuna.py" in empty["message"]
+    snapshot = adzuna.fetch_snapshot("id", "k", SPEC.job_searches, transport=httpx.MockTransport(_fake_adzuna),
+                                     now=datetime(2026, 11, 7, 20, 0, tzinfo=timezone.utc))
+    assert snapshot["fetched_at"] == "2026-11-07T20:00:00+00:00" and snapshot["source"] == "Adzuna"
+    assert [s["what"] for s in snapshot["searches"]] == list(SPEC.job_searches)
+    path = Path(_db_path()).with_suffix(".json")
+    try:
+        adzuna.save_snapshot(snapshot, path)
+        with Harness(jobs_path=path) as h:
+            jobs = h.client.get("/api/jobs").json()
+        assert jobs["fetched_at"] == snapshot["fetched_at"]
+        assert jobs["searches"][0]["listings"][0]["company"] == "Example Employer"
+    finally:
+        path.unlink(missing_ok=True)
+    for app_id, key in (("id", "wrong"), ("", "")):
+        try:
+            adzuna.fetch_snapshot(app_id, key, ("x",), transport=httpx.MockTransport(_fake_adzuna))
+        except adzuna.AdzunaError:
+            pass
+        else:
+            raise AssertionError("expected AdzunaError")
+
+
+def _check(h: Harness, stage: str, choice: str, headers: dict = TEAM):
+    return h.client.post("/api/checks", headers=headers,
+                         json={"incident_id": INC, "stage": stage, "choice": choice, "explanation": "Because."})
+
+
+def test_before_after_check_shows_scores_only_at_the_end():
+    with Harness() as h:
+        before = _check(h, "before", "c").json()
+        assert before["before"] == {"choice": "c", "explanation": "Because."} and before["improved"] is None
+        assert "score" not in json.dumps(before) and "check_scores" not in json.dumps(before)
+        assert _check(h, "after", "a").json()["code"] == "check_not_ready"  # checkout still broken
+        h.night_shift()
+        done = _check(h, "after", "a").json()
+        assert done["before"]["score"] == 0 and done["after"]["score"] == 4 and done["improved"] == 4
+        assert _check(h, "before", "a").json()["code"] == "check_closed"
+        assert h.client.get("/api/checks", params={"incident_id": INC}, headers=TEAM).json()["improved"] == 4
+        assert _check(h, "before", "z", headers=MORNING).json()["code"] == "unknown_choice"
+        incident_id = _start(h, []).json()["incident_id"]
+        outsider = h.client.post("/api/checks", headers=MORNING,
+                                 json={"incident_id": incident_id, "stage": "before", "choice": "a"})
+        assert outsider.json()["code"] == "not_teammate"
 
 
 # ---------- starting incidents and teammates ----------

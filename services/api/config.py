@@ -30,6 +30,7 @@ class Settings:
     github_token: str = ""               # read-only; empty = public rate limits
     pilot_repos: tuple[str, ...] = ()    # "owner/repo" allowlist; empty = GitHub features off
     mentor_github: tuple[str, ...] = ()  # GitHub logins of mentors who agreed to review
+    jobs_snapshot_path: Path = API_DIR / "data" / "jobs_snapshot.json"   # written by adzuna.py
 
     @property
     def demo_mode(self) -> bool:
@@ -52,6 +53,8 @@ class Settings:
             github_token=os.environ.get("GITHUB_TOKEN", "").strip(),
             pilot_repos=_handles(os.environ.get("PILOT_REPOS", "")),
             mentor_github=_handles(os.environ.get("MENTOR_GITHUB", "")),
+            jobs_snapshot_path=Path(os.environ.get("JOBS_SNAPSHOT_PATH", "").strip()
+                                    or API_DIR / "data" / "jobs_snapshot.json"),
         )
 
     def is_known_handle(self, handle: str) -> bool:

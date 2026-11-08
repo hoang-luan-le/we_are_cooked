@@ -59,7 +59,7 @@ export type ErrorCode =
   | "handoff_not_ready" | "handoff_incomplete" | "handoff_rated" | "not_night_pair" | "night_pair_cannot_rate"
   | "no_handoff" | "not_teammate" | "unknown_handle" | "not_morning_pair"
   | "github_off" | "bad_pr_url" | "repo_not_allowed" | "github_unavailable"
-  | "not_participant" | "not_a_teammate";
+  | "not_participant" | "not_a_teammate" | "unknown_choice" | "check_closed" | "check_not_ready";
 export interface ApiError { code: ErrorCode; detail: string }        // auth/404/validation errors have only `detail`
 
 // ---- rubric (0/2/4 each, out of 20) ----
@@ -217,3 +217,27 @@ export interface IncidentEvidence {
   rubric: RubricResult | null;
 }
 export interface Evidence { handle: string; incidents: IncidentEvidence[]; connections: number }
+
+// ---- GET /api/jobs (no auth) -> JobsSnapshot ----
+// Real Adzuna listings saved before the demo by `python adzuna.py`; shows even if Adzuna is down.
+// No snapshot yet -> fetched_at null, searches [], plus `message`. Never invented.
+export interface JobListing {
+  title: string; company: string; location: string; created: string; url: string;
+  salary_min: number | null; salary_max: number | null;
+}
+export interface JobsSnapshot {
+  source: "Adzuna"; fetched_at: string | null;   // ISO date: show it ("listings as of ...")
+  searches: { what: string; count: number; listings: JobListing[] }[];
+  message?: string;
+}
+
+// ---- before/after check: GET /api/checks?incident_id=..., POST /api/checks -> CheckView (teammates only) ----
+// Same question before and after. Scores appear only once both are answered.
+// 409 check_not_ready (after: checkout must be stable and "before" answered), check_closed; 422 unknown_choice.
+export interface CheckRequest { incident_id: string; stage: "before" | "after"; choice: string; explanation?: string }
+export interface CheckAnswer { choice: string; explanation: string; score?: 0 | 2 | 4 }
+export interface CheckView {
+  incident_id: string; question: string; choices: { id: string; text: string }[];
+  before: CheckAnswer | null; after: CheckAnswer | null;
+  improved: number | null;                 // after.score - before.score, once both are in
+}

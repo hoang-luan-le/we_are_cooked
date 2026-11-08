@@ -106,6 +106,16 @@ class Runbook(_Frozen):
     steps: tuple[str, ...] = Field(min_length=1)
 
 
+class CheckChoice(_Frozen):
+    id: str = Field(min_length=1, max_length=8)
+    text: str = Field(min_length=1)
+
+
+class CheckSpec(_Frozen):
+    question: str = Field(min_length=1)
+    choices: tuple[CheckChoice, ...] = Field(min_length=2)
+
+
 class ScenarioSpec(_Frozen):
     """Everything except the answer key. Safe to read from any route; still sent field by field."""
 
@@ -124,6 +134,8 @@ class ScenarioSpec(_Frozen):
     deploys: tuple[Deploy, ...] = Field(min_length=1)
     fix_version: str
     runbooks: dict[str, Runbook] = Field(min_length=1)
+    job_searches: tuple[str, ...] = Field(min_length=1)
+    check: CheckSpec
 
     @model_validator(mode="after")
     def _ladder_uses_known_panels(self) -> "ScenarioSpec":
@@ -147,3 +159,4 @@ class AnswerKey(_Frozen):
     fix: str
     cause_keywords: tuple[str, ...] = Field(min_length=1)
     communication_keywords: CommunicationKeywords
+    check_scores: dict[str, int]          # before/after check: choice id -> 0, 2 or 4

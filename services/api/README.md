@@ -31,9 +31,10 @@ python tests/test_smoke.py                 # must print ALL GOOD before you push
 | `routes/` | `/logs`, `/deploys`, `/runbooks`, `/metrics/history`; `/api/incident/start`, `/api/incident/{id}`, `/facts`, `/action`, `/hint`, `/handoff` (+ `/rating`), `/api/debrief`, `/api/cohorts`, `/api/demo/reset` |
 | `github_client.py` / `routes/pr.py` | Read-only GitHub (PILOT_REPOS allowlist, 15 s cache): `POST /api/pr/verify`, real release diffs |
 | `network.py` / `routes/network.py` | `/api/me`, private connection answers, mutual-only `/api/network`, public `/api/evidence/{handle}` |
+| `adzuna.py` / `routes/after.py` / `checks.py` | Job snapshot (`python adzuna.py`) served at `/api/jobs`; before/after check at `/api/checks` |
 | `cohorts.py` | Cohorts: create, join by code, members-only list |
 
 Contract: `packages/contracts/types.ts` and `dana-voice.md` §5.
 
 ## Not built yet
-Pilot repo on GitHub (contents ready in `D:shopnorth-checkout`), Auth0 tokens, Tiger Data (Postgres) + metrics history, Adzuna, open-source issues.
+Pilot repo on GitHub (contents ready in `D:shopnorth-checkout`), Auth0 tokens, Tiger Data (Postgres) + metrics history, open-source issues (P1).

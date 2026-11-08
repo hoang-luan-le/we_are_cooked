@@ -47,6 +47,16 @@ CREATE TABLE IF NOT EXISTS connections (
     updated     REAL NOT NULL,
     PRIMARY KEY (incident_id, from_user, to_user)
 );
+CREATE TABLE IF NOT EXISTS before_after (
+    handle      TEXT NOT NULL,
+    incident_id TEXT NOT NULL,
+    stage       TEXT NOT NULL,       -- before | after
+    decision    TEXT NOT NULL,
+    explanation TEXT NOT NULL,
+    score       INTEGER NOT NULL,
+    updated     REAL NOT NULL,
+    PRIMARY KEY (handle, incident_id, stage)
+);
 CREATE TABLE IF NOT EXISTS cohort_members (
     cohort_id TEXT NOT NULL REFERENCES cohorts(id),
     handle    TEXT NOT NULL,
@@ -81,6 +91,21 @@ class _NetworkTables:
                 "work_again=excluded.work_again, note=excluded.note, updated=excluded.updated",
                 (incident_id, from_user, to_user, int(work_again), note, updated),
             )
+
+    def save_check(self, handle: str, incident_id: str, stage: str, decision: str, explanation: str,
+                   score: int, updated: float) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT INTO before_after VALUES (?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(handle, incident_id, stage) DO UPDATE SET decision=excluded.decision, "
+                "explanation=excluded.explanation, score=excluded.score, updated=excluded.updated",
+                (handle, incident_id, stage, decision, explanation, score, updated),
+            )
+
+    def load_checks(self) -> list[tuple]:
+        with self._lock:
+            return self._conn.execute(
+                "SELECT handle, incident_id, stage, decision, explanation, score FROM before_after").fetchall()
 
     def load_connections(self) -> list[tuple[str, str, str, int, str]]:
         with self._lock:
