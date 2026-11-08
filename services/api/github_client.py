@@ -11,6 +11,7 @@ import re
 import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Callable
 
 import httpx
@@ -51,6 +52,18 @@ class PullInfo:
     merged: bool
     ci: str                      # success | failure | pending | none
     reviews: tuple[Review, ...]
+    base_ref: str = ""
+    created_at: float = 0.0      # epoch seconds
+    files: tuple[str, ...] = ()
+
+
+def _epoch(iso: str | None) -> float:
+    if not iso:
+        return 0.0
+    try:
+        return datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return 0.0
 
 
 def parse_pr_url(url: str) -> tuple[str, int] | None:
@@ -140,7 +153,10 @@ class GitHubClient:
         status = None if runs else self._get(f"/repos/{repo}/commits/{sha}/status").get("state")
         reviews = self._get(f"/repos/{repo}/pulls/{number}/reviews", {"per_page": 100})
         comments = self._get(f"/repos/{repo}/pulls/{number}/comments", {"per_page": 100})
+        files = self._get(f"/repos/{repo}/pulls/{number}/files", {"per_page": 100})
         return PullInfo(
+            base_ref=(pr.get("base") or {}).get("ref", ""), created_at=_epoch(pr.get("created_at")),
+            files=tuple(f.get("filename", "") for f in files),
             repo=repo, number=number, url=pr.get("html_url", f"https://github.com/{repo}/pull/{number}"),
             author=author.lower(), head_sha=sha, merged=bool(pr.get("merged")),
             ci=ci_conclusion(runs, status), reviews=summarize_reviews(reviews, comments, author, self.mentors),

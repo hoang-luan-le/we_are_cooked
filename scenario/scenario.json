@@ -235,6 +235,12 @@
       }
     ]
   },
+  "pilot": {
+    "base_branch": "main",
+    "fix_paths": [
+      "checkout/"
+    ]
+  },
   "answer_key": {
     "root_cause": "v2.14.0 added loyalty-tier discounts. loyalty_percent reads customer.profile[\"tier\"], guests have no tier, so checkout raises KeyError: 'tier' at checkout/pricing.py:19.",
     "fix": "A missing or unknown tier gives a 0% loyalty discount. Tests must reject a lazy try/except that returns a $0 order total.",

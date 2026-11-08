@@ -27,9 +27,12 @@ router = APIRouter(prefix="/api", tags=["network"])
 
 
 def participants(state: IncidentState) -> tuple[str, ...]:
-    """People who worked this incident: took an action, or were named in the handoff."""
-    handoff = (state.handoff.night_pair + state.handoff.morning_pair) if state.handoff else ()
-    return tuple(dict.fromkeys(state.actors + handoff))
+    """People who actually worked this incident: took an action or rated the handoff.
+
+    Being named by someone else (as a teammate or morning pair) is not enough; you take part yourself.
+    """
+    rater = (state.handoff.rating.by,) if state.handoff and state.handoff.rating else ()
+    return tuple(dict.fromkeys(state.actors + rater))
 
 
 def get_network(request: Request) -> NetworkStore:
@@ -41,6 +44,7 @@ def get_network(request: Request) -> NetworkStore:
 class ProfilePatch(BaseModel):
     github_login: str | None = Field(default=None, max_length=39)
     contact: str | None = Field(default=None, max_length=MAX_CONTACT_CHARS)
+    public_evidence: bool | None = None   # opt in to a public evidence page
 
     @field_validator("github_login")
     @classmethod
@@ -59,9 +63,8 @@ class ProfilePatch(BaseModel):
 
 def _me(store: NetworkStore, request: Request, handle: str) -> dict:
     profile = store.profile(handle)
-    mentors = request.app.state.settings.mentor_github
     return {"handle": handle, "github_login": profile.github_login, "contact": profile.contact,
-            "is_mentor": bool(profile.github_login and profile.github_login in mentors)}
+            "public_evidence": profile.public_evidence}
 
 
 @router.get("/me")
@@ -77,6 +80,7 @@ def patch_me(body: ProfilePatch, request: Request, actor: Actor = Depends(requir
         actor.handle,
         github_login=body.github_login if "github_login" in sent else UNSET,
         contact=body.contact if "contact" in sent else UNSET,
+        public_evidence=bool(body.public_evidence) if "public_evidence" in sent else UNSET,
     )
     return _me(store, request, actor.handle)
 
@@ -182,10 +186,24 @@ def _incident_evidence(state: IncidentState, handle: str, rt: Runtime) -> dict:
     }
 
 
-@router.get("/evidence/{handle}")
-def get_evidence(handle: str, rt: Runtime = Depends(get_runtime), store: NetworkStore = Depends(get_network)) -> dict:
-    handle = handle.strip().lower()
+def _evidence(handle: str, rt: Runtime, store: NetworkStore) -> dict:
     incidents = [_incident_evidence(state, handle, rt) for state, _ in rt.store.all() if handle in participants(state)]
     if not incidents:
         raise HTTPException(status_code=404, detail="No evidence for that handle yet.")
     return {"handle": handle, "incidents": incidents, "connections": len(store.mutual(handle))}
+
+
+@router.get("/me/evidence")
+def get_my_evidence(actor: Actor = Depends(require_member), rt: Runtime = Depends(get_runtime),
+                    store: NetworkStore = Depends(get_network)) -> dict:
+    """Your own record, whether or not you made it public."""
+    return _evidence(actor.handle, rt, store)
+
+
+@router.get("/evidence/{handle}")
+def get_evidence(handle: str, rt: Runtime = Depends(get_runtime), store: NetworkStore = Depends(get_network)) -> dict:
+    """Public only if that person opted in (PATCH /api/me {"public_evidence": true}); 404 otherwise."""
+    handle = handle.strip().lower()
+    if not store.profile(handle).public_evidence:
+        raise HTTPException(status_code=404, detail="No public evidence for that handle.")
+    return _evidence(handle, rt, store)

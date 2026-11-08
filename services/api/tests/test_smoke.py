@@ -77,8 +77,10 @@ GOOD_REVIEWS = [
 class FakeGitHub:
     """Just enough of the GitHub REST API for PR verify and release diffs."""
 
-    def __init__(self, *, merged=True, ci="success", reviews=None, comments=(), down=False):
+    def __init__(self, *, merged=True, ci="success", reviews=None, comments=(), down=False, base="main",
+                 created="2026-11-08T03:00:00Z", files=("checkout/pricing.py", "tests/test_pricing.py"), number=12):
         self.merged, self.ci, self.down, self.calls = merged, ci, down, 0
+        self.base, self.created, self.files, self.number = base, created, list(files), number
         self.reviews = GOOD_REVIEWS if reviews is None else reviews
         self.comments = list(comments)
 
@@ -87,9 +89,13 @@ class FakeGitHub:
         if self.down:
             return httpx.Response(503, json={"message": "down"})
         path, base = request.url.path, f"/repos/{PILOT}"
+        if path == f"{base}/pulls/12/files":
+            return httpx.Response(200, json=[{"filename": f} for f in self.files])
         if path == f"{base}/pulls/12":
             return httpx.Response(200, json={"merged": self.merged, "user": {"login": "duy-gh"},
-                                             "head": {"sha": "abc123"}, "html_url": PR_URL})
+                                             "head": {"sha": "abc123"}, "html_url": PR_URL,
+                                             "base": {"ref": self.base}, "created_at": self.created,
+                                             "number": self.number})
         if path == f"{base}/commits/abc123/check-runs":
             runs = [] if self.ci is None else [
                 {"status": "in_progress" if self.ci == "pending" else "completed",
@@ -826,7 +832,8 @@ def test_verified_pr_unlocks_deploy_fix_and_scores():
         pr = response.json()["pr"]
         assert pr["merged"] and pr["ci"] == "success" and pr["ci_passed"] is True
         assert pr["substantive_review"] is True and pr["mentor_review"] == "mentor-ana"
-        assert pr["reviewers"] == ["tung-gh", "mentor-ana"] and pr["author"] == "duy-gh"
+        assert pr["review_count"] == 2 and "author" not in pr and "reviewers" not in pr
+        assert "tung-gh" not in response.text and "duy-gh" not in response.text  # only the mentor is named
         assert "deploy_fix" in response.json()["allowed_actions"]
         h.ok("deploy_fix", headers=MORNING)
         body = h.client.post("/api/debrief", json={"incident_id": INC, "answer": EXAMPLE_ANSWER}, headers=RELAY).json()
@@ -870,6 +877,26 @@ def test_pr_verify_refuses_other_repos_and_handles_github_down():
         assert _verify(h).json()["code"] == "github_off"
 
 
+def test_only_a_fix_for_this_incident_unlocks_deploy():
+    cases = (({"base": "release"}, "pr_wrong_base"), ({"files": ("README.md", "docs/howto.md")}, "pr_not_a_fix"),
+             ({"created": "1970-01-01T00:00:00Z"}, "pr_too_old"))  # opened before this incident's page
+    for kwargs, code in cases:
+        with Harness(github=FakeGitHub(**kwargs)) as h:
+            h.ok("answer")
+            response = _verify(h)
+            assert response.status_code == 422 and response.json()["code"] == code, kwargs
+            assert h.state()["pr"] is None
+
+
+def test_a_merged_fix_cannot_be_swapped_for_another_pr():
+    with Harness(github=FakeGitHub()) as h:
+        h.ok("answer")
+        _verify(h)
+        h.app.state.runtime.store.change(INC, lambda s, now: (replace(s, pr=replace(s.pr, number=99)), None))
+        response = _verify(h)
+        assert response.status_code == 409 and response.json()["code"] == "pr_already_linked"
+
+
 def test_github_reads_are_cached():
     github = FakeGitHub()
     with Harness(github=github) as h:
@@ -896,9 +923,10 @@ def test_deploys_use_the_real_diff_from_github_with_offline_fallback():
 # ---------- profile, connections, network, evidence ----------
 
 def _two_shifts(h: Harness) -> None:
-    """duy works the night; tung is named as the morning pair."""
+    """duy works the night; tung, named as the morning pair, takes part by rating the handoff."""
     h.night_shift()
     _post_handoff(h, {**HANDOFF, "morning_pair": ["tung"]})
+    _rate(h)
 
 
 def _connect(h: Harness, headers: dict, to_user: str, yes: bool = True):
@@ -909,10 +937,11 @@ def _connect(h: Harness, headers: dict, to_user: str, yes: bool = True):
 def test_profile_get_and_patch():
     with Harness() as h:
         assert h.client.get("/api/me", headers=TEAM).json() == {
-            "handle": "duy", "github_login": None, "contact": None, "is_mentor": False}
+            "handle": "duy", "github_login": None, "contact": None, "public_evidence": False}
         me = h.client.patch("/api/me", json={"github_login": "Mentor-Ana", "contact": " duy@example.com "},
                             headers=TEAM).json()
-        assert me["github_login"] == "mentor-ana" and me["contact"] == "duy@example.com" and me["is_mentor"]
+        assert me["github_login"] == "mentor-ana" and me["contact"] == "duy@example.com"
+        assert "is_mentor" not in me  # an unverified login must not make anyone look like a mentor
         assert h.client.patch("/api/me", json={"contact": None}, headers=TEAM).json()["github_login"] == "mentor-ana"
         assert h.client.get("/api/me", headers=TEAM).json()["contact"] is None
         assert h.client.patch("/api/me", json={"github_login": "bad login!"}, headers=TEAM).status_code == 422
@@ -946,14 +975,27 @@ def test_only_people_who_worked_together_can_answer():
         assert _connect(h, RELAY, "duy").status_code == 403
 
 
+def test_being_named_is_not_taking_part():
+    """Naming someone as the morning pair doesn't drag them into connections or evidence."""
+    with Harness() as h:
+        h.night_shift()
+        _post_handoff(h, {**HANDOFF, "morning_pair": ["tung"]})
+        assert _connect(h, TEAM, "tung").json()["code"] == "not_a_teammate"
+        assert h.client.get("/api/me/evidence", headers=MORNING).status_code == 404
+        _rate(h)  # tung takes part
+        assert _connect(h, TEAM, "tung").status_code == 200
+
+
 def test_evidence_is_public_but_never_shows_contact_details():
     with Harness(github=FakeGitHub()) as h:
         _two_shifts(h)
         h.client.patch("/api/me", json={"contact": "duy@example.com", "github_login": "duy-gh"}, headers=TEAM)
-        _rate(h)
         _verify(h)
         h.ok("deploy_fix", headers=MORNING)
         h.client.post("/api/debrief", json={"incident_id": INC, "answer": EXAMPLE_ANSWER}, headers=RELAY)
+        assert h.client.get("/api/evidence/duy").status_code == 404  # private until opted in
+        assert h.client.get("/api/me/evidence", headers=TEAM).status_code == 200  # but visible to yourself
+        h.client.patch("/api/me", json={"public_evidence": True}, headers=TEAM)
         response = h.client.get("/api/evidence/duy")
         assert response.status_code == 200
         record = response.json()["incidents"][0]
@@ -961,7 +1003,7 @@ def test_evidence_is_public_but_never_shows_contact_details():
         assert record["pr"]["ci"] == "success" and record["pr"]["mentor_reviewed"] is True
         assert record["rubric"]["total"] == 20
         assert "duy@example.com" not in response.text and "duy-gh" not in response.text
-        assert h.client.get("/api/evidence/tung").json()["incidents"][0]["role"] == "morning"
+        assert h.client.get("/api/me/evidence", headers=MORNING).json()["incidents"][0]["role"] == "morning"
         assert h.client.get("/api/evidence/nobody").status_code == 404
 
 
@@ -1080,6 +1122,18 @@ def test_auth0_rejects_bad_tokens_and_the_demo_header():
         h.client.get("/api/me", headers=good)
         h.client.get("/api/me", headers=good)
         assert tenant.jwks_fetches == 1  # signing keys are cached
+
+
+def test_unknown_key_ids_cannot_hammer_auth0():
+    tenant = FakeAuth0()
+    with Harness(auth0=tenant) as h:
+        h.client.get("/api/me", headers=tenant.token("u"))
+        forged = jwt.encode({"sub": "u", "aud": AUTH0_AUDIENCE, "iss": f"https://{AUTH0_DOMAIN}/",
+                             "iat": int(time.time()), "exp": int(time.time()) + 60},
+                            tenant.key, algorithm="RS256", headers={"kid": "unknown-kid"})
+        for _ in range(5):
+            assert h.client.get("/api/me", headers={"Authorization": f"Bearer {forged}"}).status_code == 401
+        assert tenant.jwks_fetches == 1  # unknown kids don't trigger refetches within 30 s
 
 
 def test_auth0_handles_survive_a_restart():

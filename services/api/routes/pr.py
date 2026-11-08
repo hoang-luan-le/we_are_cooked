@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from auth import Actor, require_member
-from engine.errors import ActionRejected, invalid
+from engine.errors import ActionRejected, conflict, invalid
 from engine.state import PullRequest
 from engine.views import state_view
 from github_client import GitHubClient, GitHubUnavailable, PullInfo, RepoNotAllowed, parse_pr_url
@@ -37,6 +37,19 @@ def to_pull_request(info: PullInfo) -> PullRequest:
     )
 
 
+def _check_belongs_to_incident(info: PullInfo, state, scenario) -> None:
+    """Only a fix for this incident counts: right base branch, touches the code, opened after the page."""
+    pilot = scenario.spec.pilot
+    if info.base_ref != pilot.base_branch:
+        raise invalid("pr_wrong_base", f"The fix PR must target {pilot.base_branch}.")
+    if not any(f.startswith(path) for f in info.files for path in pilot.fix_paths):
+        raise invalid("pr_not_a_fix", f"The fix PR must change code under {', '.join(pilot.fix_paths)}.")
+    if info.created_at < state.paged_at:
+        raise invalid("pr_too_old", "That PR was opened before this incident; open a new one for the fix.")
+    if state.pr is not None and state.pr.merged and state.pr.number != info.number:
+        raise conflict("pr_already_linked", f"PR #{state.pr.number} is already merged for this incident.")
+
+
 def _read_pull(github: GitHubClient | None, pr_url: str) -> PullInfo:
     if github is None:
         raise ActionRejected(503, "github_off", "GitHub isn't configured (PILOT_REPOS is empty).")
@@ -58,10 +71,12 @@ def verify_pr(
 ) -> dict:
     state, _ = translate_store_errors(lambda: rt.store.get(body.incident_id), body.incident_id)
     require_teammate(state, actor)  # check before calling GitHub
-    pull = to_pull_request(_read_pull(getattr(request.app.state, "github", None), body.pr_url))
+    info = _read_pull(getattr(request.app.state, "github", None), body.pr_url)
+    pull = to_pull_request(info)
 
     def change(current, now):
         require_teammate(current, actor)
+        _check_belongs_to_incident(info, current, rt.scenario)
         new_state = replace(current, pr=pull, actions_taken=current.actions_taken + ("pr_verify",))
         return new_state, state_view(new_state, rt.scenario, now)
 

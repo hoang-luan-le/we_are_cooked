@@ -38,10 +38,9 @@ def _pr(state: IncidentState) -> dict | None:
         "substantive_review": pr.substantive_review,
         "mentor_review": pr.mentor_review,
         "url": pr.url,
-        "author": pr.author,
         "head_sha": pr.head_sha,
         "ci": pr.ci,
-        "reviewers": list(pr.reviewers),
+        "review_count": len(pr.reviewers),  # GitHub logins stay off the page; only the mentor is named
     }
 
 

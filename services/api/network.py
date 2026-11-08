@@ -23,6 +23,7 @@ class Profile:
     handle: str
     github_login: str | None = None
     contact: str | None = None
+    public_evidence: bool = False   # opt-in; off by default (users may be minors)
 
 
 @dataclass(frozen=True)
@@ -39,7 +40,7 @@ class NetworkStore:
         self._db = db
         self._clock = clock
         self._lock = threading.Lock()
-        self._profiles = {h: Profile(h, g, c) for h, g, c in (db.load_users() if db else [])}
+        self._profiles = {h: Profile(h, g, c, bool(p)) for h, g, c, p in (db.load_users() if db else [])}
         self._answers = {
             (i, f, t): Answer(i, f, t, bool(w), n) for i, f, t, w, n in (db.load_connections() if db else [])
         }
@@ -48,12 +49,13 @@ class NetworkStore:
         with self._lock:
             return self._profiles.get(handle, Profile(handle))
 
-    def update_profile(self, handle: str, *, github_login=UNSET, contact=UNSET) -> Profile:
+    def update_profile(self, handle: str, *, github_login=UNSET, contact=UNSET, public_evidence=UNSET) -> Profile:
         with self._lock:
             current = self._profiles.get(handle, Profile(handle))
-            changes = {k: v for k, v in (("github_login", github_login), ("contact", contact)) if v is not UNSET}
-            updated = replace(current, **changes)
-            self._persist(lambda db: db.save_user(handle, updated.github_login, updated.contact, self._clock()))
+            fields = (("github_login", github_login), ("contact", contact), ("public_evidence", public_evidence))
+            updated = replace(current, **{k: v for k, v in fields if v is not UNSET})
+            self._persist(lambda db: db.save_user(handle, updated.github_login, updated.contact,
+                                                  updated.public_evidence, self._clock()))
             self._profiles = {**self._profiles, handle: updated}
             return updated
 

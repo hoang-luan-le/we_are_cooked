@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS users (
     handle       TEXT PRIMARY KEY,   -- pseudonymous
     github_login TEXT,
     contact      TEXT,               -- shown only to mutual connections
+    public_evidence INTEGER NOT NULL DEFAULT 0,   -- opt-in: evidence page visible to anyone
     updated      REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS connections (
@@ -74,18 +75,19 @@ CREATE TABLE IF NOT EXISTS cohort_members (
 class _NetworkTables:
     """users + connections, mixed into Database below."""
 
-    def save_user(self, handle: str, github_login: str | None, contact: str | None, updated: float) -> None:
+    def save_user(self, handle: str, github_login: str | None, contact: str | None, public_evidence: bool,
+                  updated: float) -> None:
         with self._lock, self._conn:
             self._conn.execute(
-                "INSERT INTO users (handle, github_login, contact, updated) VALUES (?, ?, ?, ?) "
+                "INSERT INTO users (handle, github_login, contact, public_evidence, updated) VALUES (?, ?, ?, ?, ?) "
                 "ON CONFLICT(handle) DO UPDATE SET github_login=excluded.github_login, "
-                "contact=excluded.contact, updated=excluded.updated",
-                (handle, github_login, contact, updated),
+                "contact=excluded.contact, public_evidence=excluded.public_evidence, updated=excluded.updated",
+                (handle, github_login, contact, int(public_evidence), updated),
             )
 
-    def load_users(self) -> list[tuple[str, str | None, str | None]]:
+    def load_users(self) -> list[tuple[str, str | None, str | None, int]]:
         with self._lock:
-            return self._conn.execute("SELECT handle, github_login, contact FROM users").fetchall()
+            return self._conn.execute("SELECT handle, github_login, contact, public_evidence FROM users").fetchall()
 
     def save_connection(self, incident_id: str, from_user: str, to_user: str, work_again: bool,
                         note: str, updated: float) -> None:
@@ -140,6 +142,13 @@ class Database(_NetworkTables):
         self._conn = sqlite3.connect(path, check_same_thread=False)
         with self._lock, self._conn:
             self._conn.executescript(SCHEMA)
+            self._migrate()
+
+    def _migrate(self) -> None:
+        """Columns added after a table first shipped (caller holds the lock and a transaction)."""
+        columns = {row[1] for row in self._conn.execute("PRAGMA table_info(users)")}
+        if "public_evidence" not in columns:
+            self._conn.execute("ALTER TABLE users ADD COLUMN public_evidence INTEGER NOT NULL DEFAULT 0")
 
     def close(self) -> None:
         with self._lock:

@@ -29,10 +29,9 @@ export interface PullRequestInfo {
   substantive_review: boolean;             // a non-author review with 40+ chars or inline comments
   mentor_review: string | null;            // GitHub login of the mentor (MENTOR_GITHUB) who reviewed
   url: string;
-  author: string;                          // GitHub login, lowercase
   head_sha: string;
   ci: "success" | "failure" | "pending" | "none";
-  reviewers: string[];                     // GitHub logins, author excluded
+  review_count: number;                    // reviewers other than the author; only the mentor is named
 }
 
 // ---- shift handoff (typed; night pair writes, morning pair rates) ----
@@ -60,7 +59,8 @@ export type ErrorCode =
   | "no_handoff" | "not_teammate" | "unknown_handle" | "not_morning_pair"
   | "github_off" | "bad_pr_url" | "repo_not_allowed" | "github_unavailable"
   | "not_participant" | "not_a_teammate" | "unknown_choice" | "check_closed" | "check_not_ready"
-  | "handle_required" | "handle_taken" | "handle_already_set" | "bad_handle" | "not_signed_in";
+  | "handle_required" | "handle_taken" | "handle_already_set" | "bad_handle" | "not_signed_in"
+  | "pr_wrong_base" | "pr_not_a_fix" | "pr_too_old" | "pr_already_linked";
 export interface ApiError { code: ErrorCode; detail: string }        // auth/404/validation errors have only `detail`
 
 // ---- rubric (0/2/4 each, out of 20) ----
@@ -191,15 +191,22 @@ export interface MetricsHistory {
 
 // ---- POST /api/pr/verify -> IncidentState (teammates only) ----
 // Reads the PR from GitHub (PILOT_REPOS only) and records it; merged + CI success unlocks deploy_fix.
-// 422 bad_pr_url | repo_not_allowed, 502 github_unavailable, 503 github_off.
+// Only a fix for THIS incident counts: base = main, changes code under checkout/, opened after the page.
+// 422 bad_pr_url | repo_not_allowed | pr_wrong_base | pr_not_a_fix | pr_too_old,
+// 409 pr_already_linked (a merged fix can't be swapped), 502 github_unavailable, 503 github_off.
 export interface VerifyPrRequest { incident_id: string; pr_url: string } // https://github.com/<owner>/<repo>/pull/<n>
 
 // ---- profile, connections, network, evidence (privacy: users may be minors) ----
 // GET /api/me, PATCH /api/me (send only the fields you change; null clears) -> Me
-export interface Me { handle: string; github_login: string | null; contact: string | null; is_mentor: boolean }
-export interface ProfilePatch { github_login?: string | null; contact?: string | null }  // contact max 120
+export interface Me { handle: string; github_login: string | null; contact: string | null; public_evidence: boolean }
+export interface ProfilePatch {
+  github_login?: string | null;
+  contact?: string | null;                 // max 120
+  public_evidence?: boolean;               // opt in to GET /api/evidence/{handle}; off by default
+}
 // POST /api/connections -> { ok, incident_id, to_user, work_again }. Private: never reveals the other answer.
-// Only people who worked the incident together (acted, or named in the handoff). 409 not_participant, 422 not_a_teammate.
+// Only people who took part (acted, or rated the handoff); being named isn't enough.
+// 409 not_participant, 422 not_a_teammate.
 export interface ConnectionRequest { incident_id: string; to_user: string; work_again: boolean; note?: string }
 // GET /api/connections/pending -> { pending: { incident_id: string; handle: string }[] }
 // GET /api/network -> { cards: NetworkCard[] }  (only where BOTH said yes; contact appears only here)
@@ -208,7 +215,9 @@ export interface NetworkCard {
   basis: { level: Level; phase: Phase; pr_url: string | null };
   contact: string | null; github_login: string | null;
 }
-// GET /api/evidence/{handle} -> Evidence (public; handles only, never contact details or GitHub logins)
+// GET /api/me/evidence -> Evidence (your own, always).
+// GET /api/evidence/{handle} -> Evidence, only if that person opted in (404 otherwise).
+// Handles only: never contact details or GitHub logins.
 export interface IncidentEvidence {
   incident_id: string; level: Level; phase: Phase; status: Status;
   role: "night" | "morning" | "teammate";

@@ -16,6 +16,7 @@ import jwt
 
 logger = logging.getLogger("incident_lab.accounts")
 JWKS_CACHE_S = 600.0
+JWKS_MIN_REFETCH_S = 30.0   # unknown key ids can't make us hammer Auth0
 TIMEOUT_S = 5.0
 
 
@@ -45,8 +46,9 @@ class Auth0Verifier:
 
     def _signing_key(self, kid: str, refresh: bool = False) -> Any:
         with self._lock:
-            stale = self._clock() - self._fetched_at > JWKS_CACHE_S
-            if refresh or stale or kid not in self._keys:
+            since = self._clock() - self._fetched_at
+            unknown_kid = kid not in self._keys and since >= JWKS_MIN_REFETCH_S
+            if refresh or since > JWKS_CACHE_S or unknown_kid:
                 try:
                     response = self._http.get(f"{self.issuer}.well-known/jwks.json")
                     response.raise_for_status()

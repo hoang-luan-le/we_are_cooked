@@ -37,4 +37,4 @@ python tests/test_smoke.py                 # must print ALL GOOD before you push
 Contract: `packages/contracts/types.ts` and `dana-voice.md` §5.
 
 ## Not built yet
-Pilot repo on GitHub (contents ready in `D:shopnorth-checkout`), Tiger Data (Postgres) + metrics history, open-source issues (P1).
+Pushing the pilot repo `shopnorth-checkout` to GitHub (contents and tags ready locally), Tiger Data (Postgres) + metrics history, open-source issues (P1).

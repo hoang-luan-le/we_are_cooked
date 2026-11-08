@@ -116,6 +116,11 @@ class CheckSpec(_Frozen):
     choices: tuple[CheckChoice, ...] = Field(min_length=2)
 
 
+class PilotSpec(_Frozen):
+    base_branch: str = Field(min_length=1)          # a fix PR must target this branch
+    fix_paths: tuple[str, ...] = Field(min_length=1)  # ...and change at least one file under these
+
+
 class ScenarioSpec(_Frozen):
     """Everything except the answer key. Safe to read from any route; still sent field by field."""
 
@@ -136,6 +141,7 @@ class ScenarioSpec(_Frozen):
     runbooks: dict[str, Runbook] = Field(min_length=1)
     job_searches: tuple[str, ...] = Field(min_length=1)
     check: CheckSpec
+    pilot: PilotSpec
 
     @model_validator(mode="after")
     def _ladder_uses_known_panels(self) -> "ScenarioSpec":
