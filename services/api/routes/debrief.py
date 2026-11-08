@@ -1,14 +1,14 @@
 """POST /api/debrief: the learner's words to customers/VP -> the rubric score."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field, field_validator
 
 from auth import Actor, require_actor
-from engine.actions import ActionRejected, record_debrief
+from engine.actions import record_debrief
 from engine.rubric import build_rubric
 
-from .deps import Runtime, get_runtime, translate_store_errors
+from .deps import Runtime, get_runtime, require_teammate, translate_store_errors
 
 MAX_ANSWER_CHARS = 3000
 router = APIRouter(prefix="/api", tags=["debrief"])
@@ -30,10 +30,8 @@ class DebriefRequest(BaseModel):
 @router.post("/debrief")
 def post_debrief(body: DebriefRequest, actor: Actor = Depends(require_actor), rt: Runtime = Depends(get_runtime)) -> dict:
     def change(state, now):
+        require_teammate(state, actor)
         new_state = record_debrief(state, actor=actor.handle, answer=body.answer, now=now)
         return new_state, {**build_rubric(new_state, rt.scenario), "answer": body.answer}
 
-    try:
-        return translate_store_errors(lambda: rt.store.change(body.incident_id, change), body.incident_id)
-    except ActionRejected as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.message) from None
+    return translate_store_errors(lambda: rt.store.change(body.incident_id, change), body.incident_id)

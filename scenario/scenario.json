@@ -13,7 +13,8 @@
     "broken":   { "error_rate": 31.2, "orders_per_min": 290, "p95_ms": 1450 },
     "ramp_s": 90,
     "recovery_s": 10,
-    "restart_dip": { "duration_s": 20, "error_rate": 6.0, "orders_per_min": 395, "p95_ms": 520 }
+    "snooze": { "ring_again_s": 15, "error_rate_penalty": 1.5 },
+    "restart_dip": { "duration_s": 8, "error_rate": 6.0, "orders_per_min": 395, "p95_ms": 520 }
   },
 
   "dana_knows": [

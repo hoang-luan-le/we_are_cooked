@@ -31,16 +31,33 @@ def _rounded(values: dict) -> dict:
     }
 
 
+MAX_ERROR_RATE = 100.0
+
+
+def _while_broken(state: IncidentState, spec: MetricsSpec, elapsed: float) -> dict:
+    """The broken curve, plus the errors that climbed while the phone was snoozed."""
+    values = _broken_curve(spec, elapsed)
+    climbed = values["error_rate"] + state.snoozes * spec.snooze.error_rate_penalty
+    return {**values, "error_rate": min(MAX_ERROR_RATE, climbed)}
+
+
 def current_metrics(state: IncidentState, spec: MetricsSpec, now: float) -> dict:
     baseline = _values(spec.baseline)
     if state.status == "fixed":
         return _rounded(baseline)
     if state.status == "rolled_back" and state.rollback_at is not None:
-        at_rollback = _broken_curve(spec, state.rollback_at - state.paged_at)
+        at_rollback = _while_broken(state, spec, state.rollback_at - state.paged_at)
         return _rounded(_blend(at_rollback, baseline, (now - state.rollback_at) / spec.recovery_s))
     if state.restart_at is not None and now - state.restart_at < spec.restart_dip.duration_s:
         return _rounded(_values(spec.restart_dip))
-    return _rounded(_broken_curve(spec, now - state.paged_at))
+    return _rounded(_while_broken(state, spec, now - state.paged_at))
+
+
+def is_ringing(state: IncidentState, spec: MetricsSpec, now: float) -> bool:
+    """The phone rings while paged, except for ring_again_s after each snooze."""
+    if state.phase != "paged":
+        return False
+    return state.snoozed_at is None or now - state.snoozed_at >= spec.snooze.ring_again_s
 
 
 def baseline_metrics(spec: MetricsSpec) -> dict:

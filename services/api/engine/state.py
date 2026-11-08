@@ -10,9 +10,6 @@ ACTIONS = (
     "rollback", "restart", "scale", "restart_search", "deploy_fix",
 )
 OFF_SCRIPT_ACTIONS = ("restart", "scale", "restart_search")
-# No chasing while the phone is still ringing (snoozing is never pressured, hard rule 7),
-# nor once the night shift has handed off or the fix is out.
-QUIET_PHASES = ("paged", "handed_off", "fixed", "debriefed")
 # A debrief needs checkout to be safe first; resubmitting is allowed (no shame mechanics).
 DEBRIEF_PHASES = ("stabilized", "handed_off", "fixed", "debriefed")
 
@@ -54,6 +51,43 @@ class Debrief:
     at: float
 
 
+# What happened · current state · what was tried · what is still risky (design doc, flow 3).
+HANDOFF_PARTS = ("what_happened", "current_state", "tried", "risks")
+RATING_MIN, RATING_MAX = 1, 5
+CLEAR_RATING = 4      # 4-5 counts as a clear handoff for the Collaboration score
+
+
+@dataclass(frozen=True)
+class HandoffRating:
+    by: str
+    score: int            # RATING_MIN..RATING_MAX
+    note: str             # one line
+    at: float
+
+
+@dataclass(frozen=True)
+class Handoff:
+    """The night pair's four-part note for the morning pair."""
+
+    by: str
+    night_pair: tuple[str, ...]
+    at: float
+    what_happened: str
+    current_state: str
+    tried: str
+    risks: str
+    morning_pair: tuple[str, ...] = ()   # named by the night pair; they join and rate
+    rating: HandoffRating | None = None
+
+    @property
+    def text(self) -> str:
+        return " ".join((self.what_happened, self.current_state, self.tried, self.risks))
+
+    @property
+    def rated_clear(self) -> bool:
+        return self.rating is not None and self.rating.score >= CLEAR_RATING
+
+
 @dataclass(frozen=True)
 class IncidentState:
     incident_id: str
@@ -64,6 +98,8 @@ class IncidentState:
     status: str = "broken"
     rollback_at: float | None = None
     restart_at: float | None = None
+    snoozed_at: float | None = None
+    snoozes: int = 0
     panel_views: tuple[PanelView, ...] = ()
     findings: tuple[Note, ...] = ()
     status_updates: tuple[Note, ...] = ()
@@ -71,6 +107,9 @@ class IncidentState:
     hint_calls: int = 0
     pr: PullRequest | None = None
     debrief: Debrief | None = None
+    handoff: Handoff | None = None
+    actors: tuple[str, ...] = ()        # everyone who took an incident action, in order
+    teammates: tuple[str, ...] = ()     # set at start; the handoff's morning pair is added on top
 
     @property
     def opened_panels(self) -> tuple[str, ...]:
@@ -87,14 +126,26 @@ class IncidentState:
 
     @property
     def team_texts(self) -> tuple[str, ...]:
-        return tuple(note.text for note in self.findings + self.status_updates)
+        handoff = (self.handoff.text,) if self.handoff else ()
+        return tuple(note.text for note in self.findings + self.status_updates) + handoff
+
+    @property
+    def all_teammates(self) -> tuple[str, ...]:
+        """Who may act: the starting teammates plus the morning pair named in the handoff."""
+        morning = self.handoff.morning_pair if self.handoff else ()
+        return tuple(dict.fromkeys(self.teammates + morning))
 
     @property
     def loyalty_discounts(self) -> str:
         return "off" if self.status == "rolled_back" else "on"
 
 
-def new_incident(incident_id: str, level: str, now: float) -> IncidentState:
+def new_incident(incident_id: str, level: str, now: float, teammates: tuple[str, ...]) -> IncidentState:
     if level not in LEVELS:
         raise ValueError(f"level must be one of {', '.join(LEVELS)}")
-    return IncidentState(incident_id=incident_id, level=level, paged_at=now, last_contact_at=now)
+    if not teammates:
+        raise ValueError("an incident needs at least one teammate")
+    return IncidentState(
+        incident_id=incident_id, level=level, paged_at=now, last_contact_at=now,
+        teammates=tuple(dict.fromkeys(teammates)),
+    )

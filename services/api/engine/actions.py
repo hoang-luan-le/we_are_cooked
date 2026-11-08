@@ -6,22 +6,19 @@ from typing import Callable
 
 from scenario_loader import Scenario
 
+from .errors import ActionRejected, conflict, invalid
 from .progress import next_hint
 from .state import ACTIONS, DEBRIEF_PHASES, Debrief, IncidentState, Note, PanelView
 
-MAX_TEXT_CHARS = 2000
-WORKING_PHASES = ("investigating", "mitigating", "stabilized", "handed_off")
+# Design doc, security and privacy: findings 280, updates 500 characters.
+TEXT_LIMITS = {"share_finding": 280, "status_update": 500}
+MAX_TEXT_CHARS = max(TEXT_LIMITS.values())
 WORKING_ACTIONS = (
     "open_panel", "share_finding", "status_update", "rollback", "restart", "scale", "restart_search", "deploy_fix",
 )
 AFTER_FIX_ACTIONS = ("open_panel", "share_finding", "status_update")
 
-
-class ActionRejected(Exception):
-    def __init__(self, status_code: int, message: str) -> None:
-        super().__init__(message)
-        self.status_code = status_code
-        self.message = message
+__all__ = ["ActionRejected", "apply_action", "allowed_actions", "settle", "request_hint", "record_debrief"]
 
 
 def settle(state: IncidentState, scenario: Scenario, now: float) -> IncidentState:
@@ -47,14 +44,14 @@ def allowed_actions(state: IncidentState) -> tuple[str, ...]:
     return tuple(allowed)
 
 
-def _why_not(state: IncidentState, action: str) -> str:
+def _why_not(state: IncidentState, action: str) -> ActionRejected:
     if state.phase == "paged":
-        return "Answer the call first."
+        return conflict("answer_first", "Answer the call first.")
     if action == "rollback" and state.status != "broken":
-        return "Already rolled back."
-    if action == "deploy_fix":
-        return "deploy_fix needs a merged PR with passing CI."
-    return f"'{action}' isn't available in phase '{state.phase}'."
+        return conflict("already_rolled_back", "Already rolled back.")
+    if action == "deploy_fix" and state.phase not in ("fixed", "debriefed"):
+        return conflict("pr_not_ready", "deploy_fix needs a merged PR with passing CI.")
+    return conflict("not_allowed_now", f"'{action}' isn't available in phase '{state.phase}'.")
 
 
 def _record(state: IncidentState, label: str, **changes) -> IncidentState:
@@ -64,9 +61,10 @@ def _record(state: IncidentState, label: str, **changes) -> IncidentState:
 def _required_text(text: str | None, action: str) -> str:
     cleaned = (text or "").strip()
     if not cleaned:
-        raise ActionRejected(422, f"'{action}' needs some text.")
-    if len(cleaned) > MAX_TEXT_CHARS:
-        raise ActionRejected(422, f"Text is limited to {MAX_TEXT_CHARS} characters.")
+        raise invalid("text_required", f"'{action}' needs some text.")
+    limit = TEXT_LIMITS[action]
+    if len(cleaned) > limit:
+        raise invalid("text_too_long", f"Keep it under {limit} characters.")
     return cleaned
 
 
@@ -76,12 +74,13 @@ def _answer(state, scenario, actor, now, panel, text):
 
 
 def _snooze(state, scenario, actor, now, panel, text):
-    return _record(state, "snooze")  # never counts against anyone (hard rule 7)
+    # Rings again after ring_again_s; errors climb meanwhile (metrics.py). Never scored (hard rule 7).
+    return _record(state, "snooze", snoozed_at=now, snoozes=state.snoozes + 1)
 
 
 def _open_panel(state, scenario, actor, now, panel, text):
     if panel not in scenario.spec.panels:
-        raise ActionRejected(422, f"panel must be one of {', '.join(scenario.spec.panels)}")
+        raise invalid("unknown_panel", f"panel must be one of {', '.join(scenario.spec.panels)}")
     return _record(state, f"open_panel:{panel}", panel_views=state.panel_views + (PanelView(panel, now),))
 
 
@@ -139,10 +138,12 @@ def apply_action(
     text: str | None = None,
 ) -> tuple[IncidentState, str]:
     if action not in HANDLERS:
-        raise ActionRejected(422, f"Unknown action '{action}'.")
+        raise invalid("unknown_action", f"Unknown action '{action}'.")
     if action not in allowed_actions(state):
-        raise ActionRejected(409, _why_not(state, action))
+        raise _why_not(state, action)
     new_state = HANDLERS[action](state, scenario, actor, now, panel, text)
+    if actor not in new_state.actors:
+        new_state = replace(new_state, actors=new_state.actors + (actor,))
     return new_state, scenario.spec.action_results.get(action, "Done.")
 
 
@@ -160,6 +161,6 @@ def request_hint(state: IncidentState, scenario: Scenario, now: float) -> tuple[
 
 def record_debrief(state: IncidentState, *, actor: str, answer: str, now: float) -> IncidentState:
     if state.phase not in DEBRIEF_PHASES:
-        raise ActionRejected(409, "The debrief opens once checkout is stable again.")
+        raise conflict("debrief_not_ready", "The debrief opens once checkout is stable again.")
     phase = "debriefed" if state.phase == "fixed" else state.phase
     return replace(state, debrief=Debrief(by=actor, answer=answer, at=now), phase=phase)

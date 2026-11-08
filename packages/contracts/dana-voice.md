@@ -79,7 +79,8 @@ Dana calls `GET /api/incident/{id}/facts` before every answer about the incident
 - `dana_knows` = what Dana knows as the manager (from `scenario.json`, BA2 edits it there); she shares an item only when the learner asks about that topic. `facts` = what the learners have found. `findings` = what they typed to each other.
 - Fact topics, in help-ladder order: `impact` (dashboard), `who_fails` (logs), `deploy_diff` (deploys), `runbook`, `mitigation` (rollback), `missing_field` (logs + deploys opened **and** the team names the cause in a finding or status update), `fix` (deployed). Rollback comes before `missing_field`: stop the damage first.
 - `next_hint` = the first ladder step not found yet. It repeats until they do it. When everything is found, `topic` is `null` and the hint says to write it down for the morning shift.
-- `nudge` / `stakeholder_message`: true after `stakeholders.update_every_s` (120 s) without a status update or a help call. Same field names in `GET /api/incident/{id}`.
+- `nudge` / `stakeholder_message`: true after `stakeholders.update_every_s` (120 s) without a status update or a help call, only while checkout is broken (answered, not yet rolled back). Same field names in `GET /api/incident/{id}`.
+- `handoff`: `null` until the night pair writes it, then `{by, night_pair, morning_pair, sim_clock, what_happened, current_state, tried, risks, rating}` (type `Handoff`; `rating` is `{by, score 1-5, note}`). On the morning pair's help call Dana can use it ("the night shift said…"). It's the learners' own text, so it may name the cause.
 - `rubric`: `null` until `phase` is `fixed`; then the four action scores with `communication: {"pending": true}`; full once the debrief is posted.
 - Not in `/facts` on purpose: the loyalty-discount flag (its name gives the cause away before anyone has found it; it's in `GET /api/incident/{id}` for the dashboard, and the `mitigation` fact says discounts are off).
 
@@ -112,5 +113,5 @@ The voice router is mounted in the backend app, so the API and `ws://…:8000/ws
 ## 6. Open questions (settle in hour 1)
 
 1. **2-minute silence chase:** *Settled (backend):* `nudge: true` + `stakeholder_message` in incident state and `/facts`; the frontend rings Dana again (a short `help` call), which clears it via `/hint`.
-2. **Spoken handoff:** proposal: typed only for the demo (rule 5: no audio recording by default).
+2. **Spoken handoff:** *Settled (backend):* typed only, four parts (`POST /api/incident/{id}/handoff`), no audio recording.
 3. **"Explain this" / PR explanation:** in or out of P0? If in, it's a plain HTTP call (`POST /api/ai/explain`), not a voice call.

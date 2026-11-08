@@ -3,11 +3,12 @@
   "level": "explore",
   "phase": "paged",
   "status": "broken",
+  "ringing": true,
   "sim_clock": "02:04",
   "metrics": {
     "error_rate": 27.1,
     "orders_per_min": 307,
-    "p95_ms": 1291,
+    "p95_ms": 1292,
     "baseline": {
       "error_rate": 0.4,
       "orders_per_min": 420,
@@ -22,6 +23,13 @@
   "allowed_actions": [
     "answer",
     "snooze"
+  ],
+  "teammates": [
+    "duy",
+    "tung",
+    "luan",
+    "demo-a",
+    "demo-b"
   ],
   "hint_calls": 0,
   "nudge": false,
