@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import type { DanaCall, DanaMode } from "../../../../packages/contracts/dana";
+import { IncidentCheck } from "../morning/incident-check";
 import { DanaBriefing, useDanaBriefing } from "./dana-briefing";
 import { prepareDanaAudio } from "./dana-connection";
 import { fixtureCohort, type FixtureEntry, levels, updateFixtureEntry } from "./fixture-entry";
@@ -194,6 +195,10 @@ export function NightRun({ apiUser, relayBase, entry, incidentId }: { apiUser?: 
             </div>
           </div>
         ) : null}
+        {incidentId && incident?.phase === "paged" ? <details className="phase-entry-check">
+          <summary>Take the baseline check</summary>
+          <IncidentCheck incident={incidentId} night unavailable={api.pending || api.readError} />
+        </details> : null}
         {apiUser && !incident ? (
           api.readError ? null : <p role="status">Loading demo incident…</p>
         ) : visibleStage === "page" ? (
@@ -251,6 +256,8 @@ export function NightRun({ apiUser, relayBase, entry, incidentId }: { apiUser?: 
             {api.snapshot ? <TeamEvidence snapshot={api.snapshot} pending={api.pending || api.readError} onAction={perform} /> : null}
             {incidentId && apiUser && incident ? <NightHandoff incident={incident} user={apiUser}
               unavailable={api.pending || api.readError} onSave={api.saveHandoff} /> : null}
+            {incidentId && incident?.handoff ? <Link className="button primary phase-link"
+              href={`/morning?incident=${encodeURIComponent(incidentId)}`}>Open Morning workspace</Link> : null}
           </>
         )}
       </main>

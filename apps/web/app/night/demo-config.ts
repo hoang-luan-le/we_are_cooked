@@ -31,3 +31,15 @@ export async function fetchDemo(request: Request, config: NonNullable<ReturnType
     signal: AbortSignal.any([request.signal, AbortSignal.timeout(6000)]),
   });
 }
+
+export function devRelayBase() {
+  try {
+    const url = new URL(process.env.DANA_DEV_WS_BASE ?? "");
+    if (["ws:", "wss:"].includes(url.protocol) && !url.username && !url.password &&
+      !url.search && !url.hash && url.pathname === "/") {
+      return url.origin;
+    }
+  } catch {
+    // The optional relay is absent or misconfigured. The scripted briefing still works.
+  }
+}

@@ -5,11 +5,11 @@ import type { ActionRequest, ActionResponse, HandoffRequest, IncidentState } fro
 import type { MetricSample } from "./fixture";
 
 export type NightAction =
-  | { action: "answer" | "snooze" | "rollback" }
+  | { action: "answer" | "snooze" | "rollback" | "deploy_fix" }
   | { action: "share_finding" | "status_update"; text: string }
   | { action: "open_panel"; panel: "dashboard" | "logs" | "deploys" | "runbook" };
 
-type NightIncident = Omit<IncidentState, "ringing"> & { ringing?: boolean };
+export type NightIncident = Omit<IncidentState, "ringing"> & { ringing?: boolean };
 export type NightSnapshot = {
   incident: NightIncident;
   samples: MetricSample[];

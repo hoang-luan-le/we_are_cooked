@@ -241,3 +241,21 @@ button:active:not(:disabled), .button:active { transform: translateY(1px); }
 .handoff-parts dd { margin-inline-start: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 .evidence-panel form { max-width: 42rem; }
 .evidence-panel form > label { width: 100%; }
+
+.phase-link, .phase-entry-check { margin-block: 16px; }
+.phase-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 16px; }
+.phase-panel > * + *, .practice-review > * + * { margin-top: 12px; }
+.phase-panel form > label { width: 100%; }
+.phase-panel textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #a9b6cc;
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--surface);
+  font: inherit;
+  resize: vertical;
+}
+.phase-panel .service-facts dd { text-align: end; overflow-wrap: anywhere; min-width: 0; }
+.phase-panel .entry-levels legend { max-width: 100%; overflow-wrap: anywhere; }
+@media (max-width: 760px) { .phase-grid { grid-template-columns: 1fr; } }

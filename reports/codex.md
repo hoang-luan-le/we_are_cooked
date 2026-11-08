@@ -1,36 +1,34 @@
 STATUS: BLOCKED
-COMMAND_ID: 03-NIGHT-BOARD-01
+COMMAND_ID: 04-MORNING-EVIDENCE-01
 
-# Phase 03 Shared Night board quality review
+# Phase 04 Morning review and incident evidence
 
-The implemented local Night board scores **92/100** and is ready to review. The full checkpoint remains blocked on role and revision contracts. This follow-up starts at [9cc04a3](https://github.com/thanhtungnguyen-dev/we_are_cooked/commit/9cc04a3a921353e4c18d82e796b6f4829ba5914b). The [panel and handoff integration report](https://github.com/thanhtungnguyen-dev/we_are_cooked/blob/9cc04a3a921353e4c18d82e796b6f4829ba5914b/reports/codex.md) documents the original flow against [Duy’s P0 backend](https://github.com/hoang-luan-le/we_are_cooked/commit/474623ac2d5f6905714efc5012efe9c6066a320f).
+The local Phase 04 slice is ready for review. It starts at [Phase 03 quality commit 1f694f4](https://github.com/thanhtungnguyen-dev/we_are_cooked/commit/1f694f46e02abcb94a58378b31dfc0826ffe8394) and uses the P0 API currently on the fork. [Phase 03 evidence and remaining contracts](https://github.com/thanhtungnguyen-dev/we_are_cooked/blob/1f694f46e02abcb94a58378b31dfc0826ffe8394/reports/codex.md)
 
 ## A. Full-stack and React
 
-- [useNightApi](../apps/web/app/night/use-night-api.ts) clears the cached incident and action retry state when the team bridge confirms access loss. A temporary failure keeps the last snapshot and disables mutations. [Night panels](../apps/web/app/night/night-panels.tsx) also discard denied data, while a failed refresh can retain the last allowed result. The browser test removes an actual Morning teammate and confirms the shared note disappears.
-- [NightHandoff](../apps/web/app/night/night-handoff.tsx) captures the shared note and initial editor values on open. When polling observes another save, the draft stays in place and Save requires explicit review of the newer note. If a save response is lost, a later snapshot with the same normalized payload and author confirms the draft is already shared. The editor permits closing that draft without sending a second write.
-- [NightRun](../apps/web/app/night/night-run.tsx) displays the configured demo handle and team roster. After closing Help, it hides the call controls until a fresh read arrives. The refresh aborts a previous read when possible. This keeps a stale nudge from inviting another Help call. Help stays on one text relay socket and Debrief stays gated on the deployed fix. The [caption log](../apps/web/app/night/dana-briefing.tsx) separates programmatic scrolling from user scrolling so a burst of captions follows the latest line without pulling the user away from earlier lines.
+- [MorningWorkspace](../apps/web/app/morning/morning-workspace.tsx) reuses the existing 2D shell and incident polling. The Night route opens Morning after the backend records the four-part handoff. [HandoffReview](../apps/web/app/morning/morning-review.tsx) shows the handoff and submits a one-line usefulness rating for an eligible Morning member. The server still validates participation.
+- [MorningReview](../apps/web/app/morning/morning-review.tsx) separates CI, substantive non-author review, and merge. The API verifies a normalized GitHub PR URL. The screen shows the last confirmed PR alongside any newly submitted link, so a failed verify cannot replace confirmed evidence. Deploy Fix follows the API’s allowed actions and uses the existing idempotent mutation path. The Explore practice sample comes from the team’s missing-tier scenario and is a local review exercise.
+- [IncidentCheck](../apps/web/app/morning/incident-check.tsx) opens the baseline on Night entry or before the Morning fix review. It shows score changes only after the backend records both answers. [MorningDebrief](../apps/web/app/morning/morning-after.tsx) reuses the Dana relay for voice or text after a confirmed fix. Written submission goes to the same scoring service. The backend’s rubric controls the final total. Solo collaboration is shown as N/A in the presentation while the displayed server total remains the API value.
+- [The Morning bridge](../apps/web/app/api/morning/route.ts) checks the configured demo member against the incident. It forwards only supported resources and validates write payloads. Private evidence returns the signed-in demo member’s record for the current incident. Connections show pending choices and cards separately. A card is supplied only by the backend after mutual opt-in. [The request hooks](../apps/web/app/morning/use-morning-api.ts) isolate errors per panel and abort outstanding work when a panel unmounts.
 
 ## B. Data structures and algorithms
 
-The handoff editor serializes the four text fields, author, simulated timestamp, optional morning handles and rating into a local comparison key. For n characters, building and comparing the key takes O(n) time and O(n) extra space. The handoff has a bounded size and the backend exposes no version. A server revision would make the precondition smaller and, more importantly, let the server reject a simultaneous overwrite before committing it. The browser comparison only catches changes it has already observed.
+The bridge filters the private evidence list and connection lists by incident ID. For e evidence records, p pending entries and c mutual cards, it uses O(e + p + c) time and O(p + c) worst-case output space. The browser gets one evidence record and only the connection entries relevant to this incident. A backend endpoint keyed by incident would avoid transferring the rest of the member’s list to the bridge. The PR display maps a bounded CI state to a label in constant time. CI, review and merge remain independent values.
 
-## C. Readiness score and remaining contracts
+## C. System design and remaining contracts
 
-This review uses the same 100-point weighting as the Phase 01 and Phase 02 follow-up. Each score below reflects the tested local flow. The final eight points require full backend and provider evidence and received zero credit.
+The demo bridge keeps verification and allowed actions server-authoritative. An unavailable GitHub provider leaves a read-only candidate link and explains how to retry. The app sends no review, merge or GitHub mutation. The test fixture uses FastAPI’s existing transport seam for deterministic GitHub results. Rehearsal mode is labeled, and the local scripted Dana relay still calls the real scoring API.
 
-| Criterion | Weight | Phase 03 evidence |
-| --- | ---: | --- |
-| Core player flow | 30 | **30**. Two team members opened API evidence, shared findings, saw one rollback recover, and exchanged the typed handoff. |
-| Failure and resume | 22 | **22**. Same-key finding and rollback retry, denied panel cache removal, former member access loss, preserved drafts, and lost handoff acknowledgement. |
-| Keyboard, touch and layout | 15 | **15**. Panel focus, keyboard-accessible details, clipboard, handoff focus, existing touch cases, and the shared board at 390 px. |
-| Feedback and state clarity | 15 | **15**. Source labels, separate live and historical metrics, current identity, local panel errors, draft conflict, caption following through bursts, and no stale nudge after Help. |
-| Build and regression evidence | 10 | **10**. Production build, typecheck, 18 browser cases, 81 backend smoke checks, and 9 offline voice checks. The caption burst case passed 16 repeated runs. |
-| Live and full contract evidence | 8 | **0**. Per-member Night roles, role-scoped authorization and evidence, snapshot revisions and write preconditions, live GitHub diff and Deepgram verification remain open. |
-| **Total** | **100** | **92** |
+Full sign-off needs the actual stage PR, a live GitHub verification run, and live Dana voice and microphone checks. The server returns reviewer count and substantive non-author review but no assigned reviewer identity. The browser can verify exclusion of the author’s own review. It cannot enforce that an independent reviewer is the assigned Morning Reviewer until the backend provides that contract. The demo bridge uses configured local identities. Production authorization and snapshot revisions remain separate dependencies.
 
-The panel bridge checks membership and unlocks for its own demo reads. Direct API reads and the relay still need authenticated member scope for production. Help uses the scripted relay in the local test. The browser verified the Debrief gate with a simulated fixed incident.
+## Verification
 
-**Explain it back.** Why can the browser warn about an edit that arrived on the last poll while only the API can safely reject two simultaneous saves?
+- Production build and typecheck passed.
+- Nineteen browser cases passed across fixtures, the legacy API, the real local Night team API, and the Morning rehearsal. The two-browser Morning test covers pre-handoff access denial, a usefulness rating, practice review, unavailable GitHub with a read-only link, an unrelated green PR, pending and failed CI, self-review exclusion, a valid merged PR, Deploy Fix, before/after answers, scripted Dana debrief, private evidence, and mutual opt-in. The peer browser checked layout at 390 px.
+- Eighty-one backend smoke checks and nine offline voice checks passed.
+- Stage GitHub provider and live Deepgram were unverified. The Morning browser used a fixture for GitHub and real local FastAPI and Dana’s scripted relay for the rest.
 
-**Quick verification.** Run the [two-browser setup](../apps/web/README.md) and [Night board checks](../apps/web/tests/night-board.spec.ts). Compare the screen after a temporary outage with the screen after the former teammate receives an authoritative denial.
+**Explain it back.** Why should a failed verification keep the last confirmed PR visible while a successful local practice review leaves the incident’s deployment permission unchanged?
+
+**Quick verification.** Run the [Morning browser rehearsal](../apps/web/README.md) and [inspect the two-browser test](../apps/web/tests/morning.spec.ts). Find the backend action list before and after the verified merge and the network result before and after the second opt-in.
