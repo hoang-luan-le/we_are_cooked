@@ -11,6 +11,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 
+import oss
 from adzuna import load_snapshot
 from auth import Actor, require_member
 from engine.errors import conflict, invalid
@@ -28,6 +29,16 @@ def get_jobs(request: Request) -> dict:
     if snapshot is None:
         return {"source": "Adzuna", "fetched_at": None, "searches": [],
                 "message": "No job snapshot saved yet. Run python adzuna.py before the demo."}
+    return snapshot
+
+
+@router.get("/next-fixes")
+def get_next_fixes(request: Request) -> dict:
+    """Real open "good first issue" issues saved by `python oss.py`, grouped by practised skill."""
+    snapshot = oss.load_snapshot(request.app.state.settings.next_fixes_snapshot_path)
+    if snapshot is None:
+        return {"source": "GitHub", "fetched_at": None, "searches": [],
+                "message": "No open-source snapshot saved yet. Run python oss.py before the demo."}
     return snapshot
 
 

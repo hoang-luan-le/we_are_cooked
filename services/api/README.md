@@ -33,9 +33,10 @@ python tests/test_smoke.py                 # must print ALL GOOD before you push
 | `github_client.py` / `routes/pr.py` | Read-only GitHub (PILOT_REPOS allowlist, 15 s cache): `POST /api/pr/verify`, real release diffs |
 | `network.py` / `routes/network.py` | `/api/me`, private connection answers, mutual-only `/api/network`, public `/api/evidence/{handle}` |
 | `adzuna.py` / `routes/after.py` / `checks.py` | Job snapshot (`python adzuna.py`) served at `/api/jobs`; before/after check at `/api/checks` |
+| `oss.py` | `python oss.py` saves real open "good first issue" issues; served at `/api/next-fixes` (P1) |
 | `cohorts.py` | Cohorts: create, join by code, members-only list |
 
 Contract: `packages/contracts/types.ts` and `dana-voice.md` §5.
 
-## Not built yet
-Open-source issues (P1). Live Tiger Data check: `python tests/check_tigerdata.py`.
+## Before the demo
+`python tests/test_smoke.py` (ALL GOOD), `python tests/check_tigerdata.py` (TIGER DATA OK), `python adzuna.py` and `python oss.py` (fresh snapshots).
