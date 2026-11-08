@@ -93,3 +93,30 @@ test("uses the demo API for Answer, diagnosis, rollback, recovery and refresh", 
   await expect(page.getByRole("heading", { name: "Checkout incident" })).toBeVisible();
   await expect(page.getByText("Recovered", { exact: true })).toBeVisible();
 });
+
+test("dismisses a lost Answer retry when the player skips the briefing", async ({ page, request }) => {
+  test.skip(!api, "Start an isolated backend and set NIGHT_TEST_API_ORIGIN.");
+  const reset = await request.post(`${api}/api/demo/reset`, { headers: { "X-Demo-User": "demo-a" }, data: { level: "explore" } });
+  expect(reset.ok()).toBe(true);
+  let answers = 0;
+  const relaySockets: string[] = [];
+  page.on("websocket", socket => relaySockets.push(socket.url()));
+  await page.route("**/api/night", async route => {
+    const action: ActionRequest | null = route.request().postDataJSON();
+    if (action?.action !== "answer") return route.continue();
+    answers++;
+    const accepted = await route.fetch();
+    expect(accepted.ok()).toBe(true);
+    await route.abort("failed");
+  });
+
+  await page.goto("/night");
+  await page.getByRole("button", { name: "Answer Dana by text" }).click();
+  await expect(page.getByRole("button", { name: "Retry last action" })).toBeVisible();
+  await page.getByRole("button", { name: "Open incident without briefing" }).click();
+  await expect(page.getByRole("heading", { name: "Checkout incident" })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Retry last action" })).toHaveCount(0);
+  await expect(page.getByText("The API did not confirm this action.", { exact: false })).toHaveCount(0);
+  expect(answers).toBe(1);
+  expect(relaySockets).toHaveLength(0);
+});

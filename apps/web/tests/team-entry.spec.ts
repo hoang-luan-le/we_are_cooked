@@ -161,3 +161,62 @@ test("cancels older validation when Start creates a replacement incident", async
     release.resolve();
   }
 });
+
+test("validates a replacement Resume link and clears it across tabs", async ({ page, context }) => {
+  test.skip(!api || !teamEntry, "Start the team backend and opt into the team entry test.");
+  const start = page.getByRole("button", { name: "Start solo incident" });
+  const incoming = page.getByRole("heading", { name: "Dana is calling." });
+  await page.goto("/start");
+  await start.click();
+  await expect(incoming).toBeVisible();
+  const originalPath = new URL(page.url()).pathname + new URL(page.url()).search;
+
+  const entry = await context.newPage();
+  await entry.goto("/start");
+  const resume = entry.getByRole("link", { name: "Resume API incident" });
+  await expect(resume).toHaveAttribute("href", originalPath);
+
+  const validateReplacement = Promise.withResolvers<void>();
+  await entry.route("**/api/night?incident=*", async route => {
+    await validateReplacement.promise;
+    await route.continue();
+  });
+  try {
+    await page.getByRole("link", { name: "Incident Lab" }).click();
+    await start.click();
+    await expect(incoming).toBeVisible();
+    const replacementPath = new URL(page.url()).pathname + new URL(page.url()).search;
+    expect(replacementPath).not.toBe(originalPath);
+    await expect(resume).toHaveCount(0);
+
+    validateReplacement.resolve();
+    await expect(resume).toHaveAttribute("href", replacementPath);
+    await page.evaluate(key => localStorage.removeItem(key), savedKey);
+    await expect(resume).toHaveCount(0);
+    await expect(entry.getByRole("button", { name: "Start solo incident" })).toBeEnabled();
+  } finally {
+    validateReplacement.resolve();
+  }
+});
+
+for (const status of [401, 403]) {
+  test(`hides Resume when saved-incident validation returns ${status}`, async ({ page }) => {
+    test.skip(!api || !teamEntry, "Start the team backend and opt into the team entry test.");
+    const id = "inc_12345678";
+    await page.addInitScript(({ key, value, blockRemoval }) => {
+      localStorage.setItem(key, value);
+      if (blockRemoval) {
+        const removeItem = Storage.prototype.removeItem;
+        Storage.prototype.removeItem = function (name) {
+          if (name === key) throw new DOMException("Blocked storage", "SecurityError");
+          removeItem.call(this, name);
+        };
+      }
+    }, { key: savedKey, value: id, blockRemoval: status === 403 });
+    await page.route(`**/api/night?incident=${id}`, route => route.fulfill({ status }));
+    await page.goto("/start");
+    await expect(page.getByText(/The saved incident is unavailable/)).toBeVisible();
+    await expect(page.getByRole("link", { name: "Resume API incident" })).toHaveCount(0);
+    expect(await page.evaluate(key => localStorage.getItem(key), savedKey)).toBe(status === 403 ? id : null);
+  });
+}
