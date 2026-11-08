@@ -32,6 +32,37 @@ CREATE TABLE IF NOT EXISTS cohorts (
     created_by TEXT NOT NULL,
     created    REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS users (
+    handle       TEXT PRIMARY KEY,   -- pseudonymous
+    github_login TEXT,
+    contact      TEXT,               -- shown only to mutual connections
+    public_evidence INTEGER NOT NULL DEFAULT 0,   -- opt-in: evidence page visible to anyone
+    updated      REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS connections (
+    incident_id TEXT NOT NULL,
+    from_user   TEXT NOT NULL,
+    to_user     TEXT NOT NULL,
+    work_again  INTEGER NOT NULL,    -- private answer: "work with them again?"
+    note        TEXT NOT NULL,
+    updated     REAL NOT NULL,
+    PRIMARY KEY (incident_id, from_user, to_user)
+);
+CREATE TABLE IF NOT EXISTS before_after (
+    handle      TEXT NOT NULL,
+    incident_id TEXT NOT NULL,
+    stage       TEXT NOT NULL,       -- before | after
+    decision    TEXT NOT NULL,
+    explanation TEXT NOT NULL,
+    score       INTEGER NOT NULL,
+    updated     REAL NOT NULL,
+    PRIMARY KEY (handle, incident_id, stage)
+);
+CREATE TABLE IF NOT EXISTS accounts (
+    auth_sub TEXT PRIMARY KEY,       -- Auth0 subject; never shown to anyone
+    handle   TEXT NOT NULL UNIQUE,   -- the pseudonymous handle people see
+    created  REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS cohort_members (
     cohort_id TEXT NOT NULL REFERENCES cohorts(id),
     handle    TEXT NOT NULL,
@@ -41,7 +72,64 @@ CREATE TABLE IF NOT EXISTS cohort_members (
 """
 
 
-class Database:
+class _NetworkTables:
+    """users + connections, mixed into Database below."""
+
+    def save_user(self, handle: str, github_login: str | None, contact: str | None, public_evidence: bool,
+                  updated: float) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT INTO users (handle, github_login, contact, public_evidence, updated) VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(handle) DO UPDATE SET github_login=excluded.github_login, "
+                "contact=excluded.contact, public_evidence=excluded.public_evidence, updated=excluded.updated",
+                (handle, github_login, contact, int(public_evidence), updated),
+            )
+
+    def load_users(self) -> list[tuple[str, str | None, str | None, int]]:
+        with self._lock:
+            return self._conn.execute("SELECT handle, github_login, contact, public_evidence FROM users").fetchall()
+
+    def save_connection(self, incident_id: str, from_user: str, to_user: str, work_again: bool,
+                        note: str, updated: float) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT INTO connections VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(incident_id, from_user, to_user) DO UPDATE SET "
+                "work_again=excluded.work_again, note=excluded.note, updated=excluded.updated",
+                (incident_id, from_user, to_user, int(work_again), note, updated),
+            )
+
+    def save_check(self, handle: str, incident_id: str, stage: str, decision: str, explanation: str,
+                   score: int, updated: float) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT INTO before_after VALUES (?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(handle, incident_id, stage) DO UPDATE SET decision=excluded.decision, "
+                "explanation=excluded.explanation, score=excluded.score, updated=excluded.updated",
+                (handle, incident_id, stage, decision, explanation, score, updated),
+            )
+
+    def load_checks(self) -> list[tuple]:
+        with self._lock:
+            return self._conn.execute(
+                "SELECT handle, incident_id, stage, decision, explanation, score FROM before_after").fetchall()
+
+    def save_account(self, auth_sub: str, handle: str, created: float) -> None:
+        with self._lock, self._conn:
+            self._conn.execute("INSERT INTO accounts (auth_sub, handle, created) VALUES (?, ?, ?)",
+                               (auth_sub, handle, created))
+
+    def load_accounts(self) -> list[tuple[str, str]]:
+        with self._lock:
+            return self._conn.execute("SELECT auth_sub, handle FROM accounts").fetchall()
+
+    def load_connections(self) -> list[tuple[str, str, str, int, str]]:
+        with self._lock:
+            return self._conn.execute(
+                "SELECT incident_id, from_user, to_user, work_again, note FROM connections").fetchall()
+
+
+class Database(_NetworkTables):
     """One SQLite connection guarded by a lock (FastAPI runs sync routes in a thread pool)."""
 
     kind = "sqlite"
@@ -54,6 +142,13 @@ class Database:
         self._conn = sqlite3.connect(path, check_same_thread=False)
         with self._lock, self._conn:
             self._conn.executescript(SCHEMA)
+            self._migrate()
+
+    def _migrate(self) -> None:
+        """Columns added after a table first shipped (caller holds the lock and a transaction)."""
+        columns = {row[1] for row in self._conn.execute("PRAGMA table_info(users)")}
+        if "public_evidence" not in columns:
+            self._conn.execute("ALTER TABLE users ADD COLUMN public_evidence INTEGER NOT NULL DEFAULT 0")
 
     def close(self) -> None:
         with self._lock:

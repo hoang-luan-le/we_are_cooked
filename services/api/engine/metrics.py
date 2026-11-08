@@ -41,16 +41,30 @@ def _while_broken(state: IncidentState, spec: MetricsSpec, elapsed: float) -> di
     return {**values, "error_rate": min(MAX_ERROR_RATE, climbed)}
 
 
-def current_metrics(state: IncidentState, spec: MetricsSpec, now: float) -> dict:
+def metrics_at(state: IncidentState, spec: MetricsSpec, t: float, bad_release_lead_s: float = 0.0) -> dict:
+    """Dashboard numbers at moment `t`, from timestamps only, so live values and chart history agree.
+
+    `bad_release_lead_s`: how long before the page the bad release went out; before the page the
+    numbers climb from baseline to `at_page` over that time.
+    """
     baseline = _values(spec.baseline)
-    if state.status == "fixed":
+    if state.status == "fixed" and (state.fixed_at is None or t >= state.fixed_at):
         return _rounded(baseline)
-    if state.status == "rolled_back" and state.rollback_at is not None:
+    if state.rollback_at is not None and t >= state.rollback_at:
         at_rollback = _while_broken(state, spec, state.rollback_at - state.paged_at)
-        return _rounded(_blend(at_rollback, baseline, (now - state.rollback_at) / spec.recovery_s))
-    if state.restart_at is not None and now - state.restart_at < spec.restart_dip.duration_s:
+        return _rounded(_blend(at_rollback, baseline, (t - state.rollback_at) / spec.recovery_s))
+    if t < state.paged_at:
+        if bad_release_lead_s <= 0 or t < state.paged_at - bad_release_lead_s:
+            return _rounded(baseline)
+        climbed = (t - (state.paged_at - bad_release_lead_s)) / bad_release_lead_s
+        return _rounded(_blend(baseline, _values(spec.at_page), climbed))
+    if state.restart_at is not None and state.restart_at <= t < state.restart_at + spec.restart_dip.duration_s:
         return _rounded(_values(spec.restart_dip))
-    return _rounded(_while_broken(state, spec, now - state.paged_at))
+    return _rounded(_while_broken(state, spec, t - state.paged_at))
+
+
+def current_metrics(state: IncidentState, spec: MetricsSpec, now: float) -> dict:
+    return metrics_at(state, spec, now)
 
 
 def is_ringing(state: IncidentState, spec: MetricsSpec, now: float) -> bool:
@@ -62,6 +76,21 @@ def is_ringing(state: IncidentState, spec: MetricsSpec, now: float) -> bool:
 
 def baseline_metrics(spec: MetricsSpec) -> dict:
     return _rounded(_values(spec.baseline))
+
+
+def sim_time(page_at: str, elapsed_s: float) -> str:
+    """Like sim_clock, with seconds, and allowing moments before the page (negative elapsed)."""
+    hours, minutes = (int(part) for part in page_at.split(":"))
+    total = (hours * 3600 + minutes * SECONDS_PER_MINUTE + int(elapsed_s // 1)) % (MINUTES_PER_DAY * 60)
+    return f"{total // 3600:02d}:{total // 60 % 60:02d}:{total % 60:02d}"
+
+
+def minutes_between(earlier: str, later: str) -> int:
+    """'01:47' -> '02:04' = 17 (wraps past midnight)."""
+    def to_minutes(clock: str) -> int:
+        hours, minutes = (int(part) for part in clock.split(":"))
+        return hours * SECONDS_PER_MINUTE + minutes
+    return (to_minutes(later) - to_minutes(earlier)) % MINUTES_PER_DAY
 
 
 def sim_clock(page_at: str, elapsed_s: float) -> str:

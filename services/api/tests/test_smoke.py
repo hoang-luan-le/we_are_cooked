@@ -11,6 +11,8 @@ import json
 import sqlite3
 import sys
 import tempfile
+import time
+from datetime import datetime, timezone
 import traceback
 from dataclasses import replace
 from pathlib import Path
@@ -19,8 +21,11 @@ API_DIR = Path(__file__).resolve().parent.parent
 if str(API_DIR) not in sys.path:
     sys.path.insert(0, str(API_DIR))
 
+import httpx  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
+import adzuna  # noqa: E402
+import jwt  # noqa: E402
 from config import DEFAULT_DEMO_TEAM, DEFAULT_SCENARIO_PATH, Settings  # noqa: E402
 from engine.snapshot import from_snapshot, to_snapshot  # noqa: E402
 from engine.state import PullRequest  # noqa: E402
@@ -60,6 +65,80 @@ class FakeClock:
         self.t += seconds
 
 
+PILOT = "shopnorth/shopnorth-checkout"
+PR_URL = f"https://github.com/{PILOT}/pull/12"
+GOOD_REVIEWS = [
+    {"user": {"login": "tung-gh"}, "state": "APPROVED",
+     "body": "Checked the guest path and the unknown-tier test; the guard tests cover free orders."},
+    {"user": {"login": "Mentor-Ana"}, "state": "COMMENTED", "body": "Nice."},
+]
+
+
+class FakeGitHub:
+    """Just enough of the GitHub REST API for PR verify and release diffs."""
+
+    def __init__(self, *, merged=True, ci="success", reviews=None, comments=(), down=False, base="main",
+                 created="2026-11-08T03:00:00Z", files=("checkout/pricing.py", "tests/test_pricing.py"), number=12):
+        self.merged, self.ci, self.down, self.calls = merged, ci, down, 0
+        self.base, self.created, self.files, self.number = base, created, list(files), number
+        self.reviews = GOOD_REVIEWS if reviews is None else reviews
+        self.comments = list(comments)
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        self.calls += 1
+        if self.down:
+            return httpx.Response(503, json={"message": "down"})
+        path, base = request.url.path, f"/repos/{PILOT}"
+        if path == f"{base}/pulls/12/files":
+            return httpx.Response(200, json=[{"filename": f} for f in self.files])
+        if path == f"{base}/pulls/12":
+            return httpx.Response(200, json={"merged": self.merged, "user": {"login": "duy-gh"},
+                                             "head": {"sha": "abc123"}, "html_url": PR_URL,
+                                             "base": {"ref": self.base}, "created_at": self.created,
+                                             "number": self.number})
+        if path == f"{base}/commits/abc123/check-runs":
+            runs = [] if self.ci is None else [
+                {"status": "in_progress" if self.ci == "pending" else "completed",
+                 "conclusion": None if self.ci == "pending" else self.ci}]
+            return httpx.Response(200, json={"check_runs": runs})
+        if path == f"{base}/commits/abc123/status":
+            return httpx.Response(200, json={"state": "pending"})
+        if path == f"{base}/pulls/12/reviews":
+            return httpx.Response(200, json=self.reviews)
+        if path == f"{base}/pulls/12/comments":
+            return httpx.Response(200, json=self.comments)
+        if path.startswith(f"{base}/compare/"):
+            return httpx.Response(200, json={"files": [{"filename": "checkout/pricing.py", "patch": "@@ real @@"}]})
+        return httpx.Response(404, json={"message": "Not Found"})
+
+
+AUTH0_DOMAIN = "incidentlab-test.example.auth0.com"
+AUTH0_AUDIENCE = "https://api.incidentlab.example"
+
+
+class FakeAuth0:
+    """An Auth0 tenant: serves its JWKS and signs RS256 access tokens with a throwaway key."""
+
+    def __init__(self):
+        from cryptography.hazmat.primitives.asymmetric import rsa
+
+        self.key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        self.jwks_fetches = 0
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
+        self.jwks_fetches += 1
+        jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(self.key.public_key()))
+        return httpx.Response(200, json={"keys": [{**jwk, "kid": "test-key", "use": "sig", "alg": "RS256"}]})
+
+    def token(self, sub: str, *, key=None, audience: str = AUTH0_AUDIENCE, issuer: str = f"https://{AUTH0_DOMAIN}/",
+              expires_in: int = 3600) -> dict:
+        now = int(time.time())
+        claims = {"sub": sub, "aud": audience, "iss": issuer, "iat": now, "exp": now + expires_in}
+        token = jwt.encode(claims, key or self.key, algorithm="RS256", headers={"kid": "test-key"})
+        return {"Authorization": f"Bearer {token}"}
+
+
 class Harness:
     """A running app with a fake clock and helpers for the common calls."""
 
@@ -67,11 +146,19 @@ class Harness:
 
     def __init__(self, scenario_path: Path = DEFAULT_SCENARIO_PATH, auth0_domain: str = "",
                  sqlite_path: str = ":memory:", database_url: str = "", clock: FakeClock | None = None,
-                 demo_team: tuple[str, ...] = DEFAULT_DEMO_TEAM) -> None:
+                 demo_team: tuple[str, ...] = DEFAULT_DEMO_TEAM, github: "FakeGitHub | None" = None,
+                 jobs_path: Path | None = None, auth0: "FakeAuth0 | None" = None) -> None:
         self.clock = clock or FakeClock()
+        if auth0 is not None:
+            auth0_domain = AUTH0_DOMAIN
         settings = Settings(scenario_path=scenario_path, internal_key=INTERNAL_KEY, auth0_domain=auth0_domain,
-                            sqlite_path=sqlite_path, database_url=database_url, demo_team=demo_team)
-        self.app = create_app(settings, clock=self.clock)
+                            auth0_audience=AUTH0_AUDIENCE,
+                            sqlite_path=sqlite_path, database_url=database_url, demo_team=demo_team,
+                            pilot_repos=(PILOT,) if github else (), mentor_github=("mentor-ana",),
+                            jobs_snapshot_path=jobs_path or API_DIR / "tests" / "no-jobs-snapshot.json")
+        transport = httpx.MockTransport(github.handle) if github else None
+        self.app = create_app(settings, clock=self.clock, github_transport=transport,
+                              auth0_transport=httpx.MockTransport(auth0.handle) if auth0 else None)
         self.client = TestClient(self.app)
 
     def __enter__(self) -> "Harness":
@@ -662,6 +749,402 @@ def test_cohorts_are_members_only():
 def test_cohorts_work_even_without_a_scenario():
     with Harness(scenario_path=API_DIR / "tests" / "no-such-scenario.json") as h:
         assert _create_cohort(h).status_code == 201
+
+
+# ---------- panels ----------
+
+def _logs(h: Harness, **params):
+    return h.client.get(f"/api/incident/{INC}/logs", params=params).json()["lines"]
+
+
+def test_logs_show_guest_failures_until_the_rollback():
+    with Harness() as h:
+        h.ok("answer")
+        h.clock.advance(60)
+        lines = _logs(h)
+        assert len(lines) == 200 and lines == _logs(h)  # deterministic
+        errors = [line for line in lines if line["level"] == "ERROR"]
+        assert errors and all("KeyError: 'tier'" in e["message"] and "guest=true" in e["message"] for e in errors)
+        assert 0.15 < len(errors) / len([x for x in lines if x["service"] == "checkout"]) < 0.5
+        assert any(line["service"] == "search-service" for line in lines)  # the red herring
+        assert all(line["level"] == "ERROR" for line in _logs(h, level="ERROR", limit=20))
+        assert all("tier=gold" in line["message"] for line in _logs(h, q="tier=gold", limit=10))
+        h.ok("rollback")
+        h.clock.advance(60)
+        newest = _logs(h, limit=40)
+        assert newest and not any(line["level"] == "ERROR" for line in newest)
+        assert h.client.get(f"/api/incident/{INC}/logs", params={"limit": 201}).status_code == 422
+
+
+def test_deploys_show_the_diff_and_the_live_version():
+    with Harness() as h:
+        deploys = h.client.get(f"/api/incident/{INC}/deploys").json()
+        assert deploys["live_version"] == SPEC.releases.bad
+        bad = next(r for r in deploys["releases"] if r["version"] == SPEC.releases.bad)
+        assert bad["live"] and bad["diff_source"] == "scenario" and bad["at"] == SPEC.releases.bad_at
+        assert 'customer.profile["tier"]' in bad["files"][0]["patch"]
+        h.ok("answer")
+        h.ok("rollback")
+        assert h.client.get(f"/api/incident/{INC}/deploys").json()["live_version"] == SPEC.releases.good
+        h.set_pr()
+        h.ok("deploy_fix")
+        assert h.client.get(f"/api/incident/{INC}/deploys").json()["live_version"] == SPEC.fix_version
+
+
+def test_runbooks():
+    with Harness() as h:
+        index = h.client.get(f"/api/incident/{INC}/runbooks").json()["runbooks"]
+        assert index and index[0]["name"] in SPEC.runbooks
+        book = h.client.get(f"/api/incident/{INC}/runbooks/{index[0]['name']}").json()
+        assert book["steps"] == list(SPEC.runbooks[index[0]["name"]].steps)
+        assert h.client.get(f"/api/incident/{INC}/runbooks/nope").status_code == 404
+
+
+def test_metrics_history_reaches_back_to_the_bad_release_and_shows_recovery():
+    with Harness() as h:
+        h.ok("answer")
+        h.clock.advance(120)
+        h.ok("rollback")
+        h.clock.advance(60)
+        history = h.client.get(f"/api/incident/{INC}/metrics/history",
+                               params={"window_s": 1800, "step_s": 10}).json()
+    samples = history["samples"]
+    assert samples[0]["error_rate"] == SPEC.metrics.baseline.error_rate  # before 01:47
+    assert max(s["error_rate"] for s in samples) >= SPEC.metrics.at_page.error_rate
+    assert samples[-1]["error_rate"] == SPEC.metrics.baseline.error_rate  # recovered
+    labels = [e["label"] for e in history["events"]]
+    assert labels == [f"bad release {SPEC.releases.bad}", "paged", "rollback"]
+    assert history["events"][0]["sim_time"] == f"{SPEC.releases.bad_at}:00"
+
+
+# ---------- GitHub: PR verify and real diffs ----------
+
+def _verify(h: Harness, url: str = PR_URL, headers: dict = MORNING):
+    return h.client.post("/api/pr/verify", json={"incident_id": INC, "pr_url": url}, headers=headers)
+
+
+def test_verified_pr_unlocks_deploy_fix_and_scores():
+    with Harness(github=FakeGitHub()) as h:
+        h.night_shift()
+        h.hand_over()
+        response = _verify(h)
+        assert response.status_code == 200, response.text
+        pr = response.json()["pr"]
+        assert pr["merged"] and pr["ci"] == "success" and pr["ci_passed"] is True
+        assert pr["substantive_review"] is True and pr["mentor_review"] == "mentor-ana"
+        assert pr["review_count"] == 2 and "author" not in pr and "reviewers" not in pr
+        assert "tung-gh" not in response.text and "duy-gh" not in response.text  # only the mentor is named
+        assert "deploy_fix" in response.json()["allowed_actions"]
+        h.ok("deploy_fix", headers=MORNING)
+        body = h.client.post("/api/debrief", json={"incident_id": INC, "answer": EXAMPLE_ANSWER}, headers=RELAY).json()
+        assert body["total"] == 20
+        assert h.client.get("/health").json()["pilot_repo"] == PILOT
+
+
+def test_pr_not_ready_until_merged_and_green():
+    cases = (({"merged": False}, True), ({"ci": "failure"}, False), ({"ci": "pending"}, None), ({"ci": None}, None))
+    for kwargs, ci_passed in cases:
+        with Harness(github=FakeGitHub(**kwargs)) as h:
+            h.ok("answer")
+            pr = _verify(h).json()["pr"]
+            assert pr["ci_passed"] is ci_passed, kwargs
+            assert h.act("deploy_fix").json()["code"] == "pr_not_ready"
+
+
+def test_only_real_reviews_by_someone_else_count():
+    short = [{"user": {"login": "tung-gh"}, "state": "APPROVED", "body": "LGTM"},
+             {"user": {"login": "duy-gh"}, "state": "COMMENTED", "body": "x" * 100}]  # self-review
+    with Harness(github=FakeGitHub(reviews=short)) as h:
+        assert _verify(h).json()["pr"]["substantive_review"] is False
+    inline = [{"user": {"login": "tung-gh"}, "body": "This line still reads the profile tier"}]
+    with Harness(github=FakeGitHub(reviews=short, comments=inline)) as h:
+        assert _verify(h).json()["pr"]["substantive_review"] is True
+
+
+def test_pr_verify_refuses_other_repos_and_handles_github_down():
+    with Harness(github=FakeGitHub()) as h:
+        assert _verify(h, "https://github.com/someone/else/pull/1").json()["code"] == "repo_not_allowed"
+        assert _verify(h, "not a url").json()["code"] == "bad_pr_url"
+        assert _verify(h, headers=RELAY).status_code == 403
+        incident_id = _start(h, []).json()["incident_id"]
+        outsider = h.client.post("/api/pr/verify", json={"incident_id": incident_id, "pr_url": PR_URL},
+                                 headers=MORNING)
+        assert outsider.json()["code"] == "not_teammate"
+    with Harness(github=FakeGitHub(down=True)) as h:
+        response = _verify(h)
+        assert response.status_code == 502 and response.json()["code"] == "github_unavailable"
+    with Harness() as h:  # PILOT_REPOS empty
+        assert _verify(h).json()["code"] == "github_off"
+
+
+def test_only_a_fix_for_this_incident_unlocks_deploy():
+    cases = (({"base": "release"}, "pr_wrong_base"), ({"files": ("README.md", "docs/howto.md")}, "pr_not_a_fix"),
+             ({"created": "1970-01-01T00:00:00Z"}, "pr_too_old"))  # opened before this incident's page
+    for kwargs, code in cases:
+        with Harness(github=FakeGitHub(**kwargs)) as h:
+            h.ok("answer")
+            response = _verify(h)
+            assert response.status_code == 422 and response.json()["code"] == code, kwargs
+            assert h.state()["pr"] is None
+
+
+def test_a_merged_fix_cannot_be_swapped_for_another_pr():
+    with Harness(github=FakeGitHub()) as h:
+        h.ok("answer")
+        _verify(h)
+        h.app.state.runtime.store.change(INC, lambda s, now: (replace(s, pr=replace(s.pr, number=99)), None))
+        response = _verify(h)
+        assert response.status_code == 409 and response.json()["code"] == "pr_already_linked"
+
+
+def test_github_reads_are_cached():
+    github = FakeGitHub()
+    with Harness(github=github) as h:
+        _verify(h)
+        calls = github.calls
+        _verify(h)
+        assert github.calls == calls
+
+
+def _bad_release(h: Harness) -> dict:
+    releases = h.client.get(f"/api/incident/{INC}/deploys").json()["releases"]
+    return next(r for r in releases if r["version"] == SPEC.releases.bad)
+
+
+def test_deploys_use_the_real_diff_from_github_with_offline_fallback():
+    with Harness(github=FakeGitHub()) as h:
+        bad = _bad_release(h)
+        assert bad["diff_source"] == "github" and bad["files"][0]["patch"] == "@@ real @@"
+    with Harness(github=FakeGitHub(down=True)) as h:
+        bad = _bad_release(h)
+        assert bad["diff_source"] == "scenario" and 'profile["tier"]' in bad["files"][0]["patch"]
+
+
+# ---------- profile, connections, network, evidence ----------
+
+def _two_shifts(h: Harness) -> None:
+    """duy works the night; tung, named as the morning pair, takes part by rating the handoff."""
+    h.night_shift()
+    _post_handoff(h, {**HANDOFF, "morning_pair": ["tung"]})
+    _rate(h)
+
+
+def _connect(h: Harness, headers: dict, to_user: str, yes: bool = True):
+    return h.client.post("/api/connections", headers=headers,
+                         json={"incident_id": INC, "to_user": to_user, "work_again": yes})
+
+
+def test_profile_get_and_patch():
+    with Harness() as h:
+        assert h.client.get("/api/me", headers=TEAM).json() == {
+            "handle": "duy", "github_login": None, "contact": None, "public_evidence": False}
+        me = h.client.patch("/api/me", json={"github_login": "Mentor-Ana", "contact": " duy@example.com "},
+                            headers=TEAM).json()
+        assert me["github_login"] == "mentor-ana" and me["contact"] == "duy@example.com"
+        assert "is_mentor" not in me  # an unverified login must not make anyone look like a mentor
+        assert h.client.patch("/api/me", json={"contact": None}, headers=TEAM).json()["github_login"] == "mentor-ana"
+        assert h.client.get("/api/me", headers=TEAM).json()["contact"] is None
+        assert h.client.patch("/api/me", json={"github_login": "bad login!"}, headers=TEAM).status_code == 422
+        assert h.client.get("/api/me", headers=RELAY).status_code == 403
+
+
+def test_contact_shows_only_after_a_mutual_yes():
+    with Harness() as h:
+        _two_shifts(h)
+        h.client.patch("/api/me", json={"contact": "tung@example.com"}, headers=MORNING)
+        assert h.client.get("/api/connections/pending", headers=TEAM).json()["pending"] == [
+            {"incident_id": INC, "handle": "tung"}]
+        answer = _connect(h, TEAM, "tung").json()
+        assert answer == {"ok": True, "incident_id": INC, "to_user": "tung", "work_again": True}
+        assert h.client.get("/api/network", headers=TEAM).json()["cards"] == []      # one-sided: nothing
+        assert h.client.get("/api/network", headers=MORNING).json()["cards"] == []   # and tung can't tell
+        assert h.client.get("/api/connections/pending", headers=TEAM).json()["pending"] == []
+        _connect(h, MORNING, "duy")
+        card = h.client.get("/api/network", headers=TEAM).json()["cards"][0]
+        assert card["handle"] == "tung" and card["contact"] == "tung@example.com" and card["incident_id"] == INC
+        _connect(h, MORNING, "duy", yes=False)  # changed their mind
+        assert h.client.get("/api/network", headers=TEAM).json()["cards"] == []
+
+
+def test_only_people_who_worked_together_can_answer():
+    with Harness() as h:
+        _two_shifts(h)
+        assert _connect(h, OTHER, "duy").json()["code"] == "not_participant"   # demo-a never worked it
+        assert _connect(h, TEAM, "demo-a").json()["code"] == "not_a_teammate"
+        assert _connect(h, TEAM, "duy").json()["code"] == "not_a_teammate"     # yourself
+        assert _connect(h, RELAY, "duy").status_code == 403
+
+
+def test_being_named_is_not_taking_part():
+    """Naming someone as the morning pair doesn't drag them into connections or evidence."""
+    with Harness() as h:
+        h.night_shift()
+        _post_handoff(h, {**HANDOFF, "morning_pair": ["tung"]})
+        assert _connect(h, TEAM, "tung").json()["code"] == "not_a_teammate"
+        assert h.client.get("/api/me/evidence", headers=MORNING).status_code == 404
+        _rate(h)  # tung takes part
+        assert _connect(h, TEAM, "tung").status_code == 200
+
+
+def test_evidence_is_public_but_never_shows_contact_details():
+    with Harness(github=FakeGitHub()) as h:
+        _two_shifts(h)
+        h.client.patch("/api/me", json={"contact": "duy@example.com", "github_login": "duy-gh"}, headers=TEAM)
+        _verify(h)
+        h.ok("deploy_fix", headers=MORNING)
+        h.client.post("/api/debrief", json={"incident_id": INC, "answer": EXAMPLE_ANSWER}, headers=RELAY)
+        assert h.client.get("/api/evidence/duy").status_code == 404  # private until opted in
+        assert h.client.get("/api/me/evidence", headers=TEAM).status_code == 200  # but visible to yourself
+        h.client.patch("/api/me", json={"public_evidence": True}, headers=TEAM)
+        response = h.client.get("/api/evidence/duy")
+        assert response.status_code == 200
+        record = response.json()["incidents"][0]
+        assert record["role"] == "night" and record["findings_shared"] == 1 and record["handoff_rating"] == 5
+        assert record["pr"]["ci"] == "success" and record["pr"]["mentor_reviewed"] is True
+        assert record["rubric"]["total"] == 20
+        assert "duy@example.com" not in response.text and "duy-gh" not in response.text
+        assert h.client.get("/api/me/evidence", headers=MORNING).json()["incidents"][0]["role"] == "morning"
+        assert h.client.get("/api/evidence/nobody").status_code == 404
+
+
+def test_profiles_and_answers_survive_a_restart():
+    path, clock = _db_path(), FakeClock()
+    try:
+        with Harness(sqlite_path=path, clock=clock) as h:
+            _two_shifts(h)
+            h.client.patch("/api/me", json={"contact": "tung@example.com"}, headers=MORNING)
+            _connect(h, TEAM, "tung")
+            _connect(h, MORNING, "duy")
+        with Harness(sqlite_path=path, clock=clock) as h:
+            assert h.client.get("/api/network", headers=TEAM).json()["cards"][0]["contact"] == "tung@example.com"
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+# ---------- jobs snapshot and before/after check ----------
+
+def _fake_adzuna(request: httpx.Request) -> httpx.Response:
+    if request.url.params.get("app_key") != "k":
+        return httpx.Response(401, json={"error": "bad key"})
+    return httpx.Response(200, json={"count": 42, "results": [{
+        "title": f"Junior {request.url.params['what']}", "company": {"display_name": "Example Employer"},
+        "location": {"display_name": "Calgary, Alberta"}, "created": "2026-11-01T10:00:00Z",
+        "redirect_url": "https://www.adzuna.ca/details/1", "salary_min": 60000, "salary_max": 75000}]})
+
+
+def test_jobs_come_from_a_saved_snapshot_never_invented():
+    with Harness() as h:
+        empty = h.client.get("/api/jobs").json()
+        assert empty["searches"] == [] and empty["fetched_at"] is None and "adzuna.py" in empty["message"]
+    snapshot = adzuna.fetch_snapshot("id", "k", SPEC.job_searches, transport=httpx.MockTransport(_fake_adzuna),
+                                     now=datetime(2026, 11, 7, 20, 0, tzinfo=timezone.utc))
+    assert snapshot["fetched_at"] == "2026-11-07T20:00:00+00:00" and snapshot["source"] == "Adzuna"
+    assert [s["what"] for s in snapshot["searches"]] == list(SPEC.job_searches)
+    path = Path(_db_path()).with_suffix(".json")
+    try:
+        adzuna.save_snapshot(snapshot, path)
+        with Harness(jobs_path=path) as h:
+            jobs = h.client.get("/api/jobs").json()
+        assert jobs["fetched_at"] == snapshot["fetched_at"]
+        assert jobs["searches"][0]["listings"][0]["company"] == "Example Employer"
+    finally:
+        path.unlink(missing_ok=True)
+    for app_id, key in (("id", "wrong"), ("", "")):
+        try:
+            adzuna.fetch_snapshot(app_id, key, ("x",), transport=httpx.MockTransport(_fake_adzuna))
+        except adzuna.AdzunaError:
+            pass
+        else:
+            raise AssertionError("expected AdzunaError")
+
+
+def _check(h: Harness, stage: str, choice: str, headers: dict = TEAM):
+    return h.client.post("/api/checks", headers=headers,
+                         json={"incident_id": INC, "stage": stage, "choice": choice, "explanation": "Because."})
+
+
+def test_before_after_check_shows_scores_only_at_the_end():
+    with Harness() as h:
+        before = _check(h, "before", "c").json()
+        assert before["before"] == {"choice": "c", "explanation": "Because."} and before["improved"] is None
+        assert "score" not in json.dumps(before) and "check_scores" not in json.dumps(before)
+        assert _check(h, "after", "a").json()["code"] == "check_not_ready"  # checkout still broken
+        h.night_shift()
+        done = _check(h, "after", "a").json()
+        assert done["before"]["score"] == 0 and done["after"]["score"] == 4 and done["improved"] == 4
+        assert _check(h, "before", "a").json()["code"] == "check_closed"
+        assert h.client.get("/api/checks", params={"incident_id": INC}, headers=TEAM).json()["improved"] == 4
+        assert _check(h, "before", "z", headers=MORNING).json()["code"] == "unknown_choice"
+        incident_id = _start(h, []).json()["incident_id"]
+        outsider = h.client.post("/api/checks", headers=MORNING,
+                                 json={"incident_id": incident_id, "stage": "before", "choice": "a"})
+        assert outsider.json()["code"] == "not_teammate"
+
+
+# ---------- Auth0 sign-in ----------
+
+def test_auth0_users_claim_a_handle_then_work_normally():
+    tenant = FakeAuth0()
+    maya, sam = tenant.token("google-oauth2|111"), tenant.token("github|222")
+    with Harness(auth0=tenant) as h:
+        assert h.client.get("/api/me", headers=maya).json()["code"] == "handle_required"
+        claimed = h.client.post("/api/me/handle", json={"handle": "Maya-Demo"}, headers=maya)
+        assert claimed.status_code == 200 and claimed.json()["handle"] == "maya-demo"
+        assert h.client.get("/api/me", headers=maya).json()["handle"] == "maya-demo"
+        assert h.client.post("/api/me/handle", json={"handle": "maya-demo"}, headers=sam).json()["code"] == "handle_taken"
+        assert h.client.post("/api/me/handle", json={"handle": "x"}, headers=maya).json()["code"] == "handle_already_set"
+        assert h.client.post("/api/me/handle", json={"handle": "Real Name"}, headers=sam).json()["code"] == "bad_handle"
+        assert h.client.post("/api/me/handle", json={"handle": "dana-relay"}, headers=sam).json()["code"] == "bad_handle"
+        assert h.client.post("/api/me/handle", json={"handle": "sam"}, headers=RELAY).json()["code"] == "not_signed_in"
+        start = lambda team: h.client.post("/api/incident/start", json={"teammates": team}, headers=maya)  # noqa: E731
+        assert start(["sam"]).json()["code"] == "unknown_handle"   # sam hasn't claimed a handle yet
+        h.client.post("/api/me/handle", json={"handle": "sam"}, headers=sam)
+        incident = start(["sam"]).json()
+        assert incident["teammates"] == ["maya-demo", "sam"]
+        assert "google-oauth2" not in json.dumps(incident)  # the Auth0 subject is never shown
+        answer = {"action": "answer", "idempotency_key": "a1"}
+        assert h.client.post(f"/api/incident/{incident['incident_id']}/action", json=answer,
+                             headers=sam).status_code == 200
+
+
+def test_auth0_rejects_bad_tokens_and_the_demo_header():
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    tenant = FakeAuth0()
+    other_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    bad = [tenant.token("u", expires_in=-60), tenant.token("u", audience="https://other.example"),
+           tenant.token("u", issuer="https://evil.example/"), tenant.token("u", key=other_key),
+           {"Authorization": "Bearer not-a-jwt"}, {"Authorization": "Basic abc"}, {}, TEAM]
+    with Harness(auth0=tenant) as h:
+        for headers in bad:
+            assert h.client.get("/api/me", headers=headers).status_code == 401, headers
+        good = tenant.token("u")
+        h.client.get("/api/me", headers=good)
+        h.client.get("/api/me", headers=good)
+        assert tenant.jwks_fetches == 1  # signing keys are cached
+
+
+def test_unknown_key_ids_cannot_hammer_auth0():
+    tenant = FakeAuth0()
+    with Harness(auth0=tenant) as h:
+        h.client.get("/api/me", headers=tenant.token("u"))
+        forged = jwt.encode({"sub": "u", "aud": AUTH0_AUDIENCE, "iss": f"https://{AUTH0_DOMAIN}/",
+                             "iat": int(time.time()), "exp": int(time.time()) + 60},
+                            tenant.key, algorithm="RS256", headers={"kid": "unknown-kid"})
+        for _ in range(5):
+            assert h.client.get("/api/me", headers={"Authorization": f"Bearer {forged}"}).status_code == 401
+        assert tenant.jwks_fetches == 1  # unknown kids don't trigger refetches within 30 s
+
+
+def test_auth0_handles_survive_a_restart():
+    tenant, path = FakeAuth0(), _db_path()
+    try:
+        with Harness(auth0=tenant, sqlite_path=path) as h:
+            h.client.post("/api/me/handle", json={"handle": "maya-demo"}, headers=tenant.token("google-oauth2|1"))
+        with Harness(auth0=tenant, sqlite_path=path) as h:
+            assert h.client.get("/api/me", headers=tenant.token("google-oauth2|1")).json()["handle"] == "maya-demo"
+    finally:
+        Path(path).unlink(missing_ok=True)
 
 
 # ---------- starting incidents and teammates ----------

@@ -31,13 +31,18 @@ class PanelView:
 
 @dataclass(frozen=True)
 class PullRequest:
-    """Read from GitHub by PR verify (not built yet). The engine only reads it."""
+    """Read from GitHub by POST /api/pr/verify. The engine only reads it; GitHub owns the truth."""
 
     number: int
     merged: bool
-    ci_passed: bool | None
-    substantive_review: bool
-    mentor_review: str | None = None
+    ci_passed: bool | None           # None = CI still running or not found
+    substantive_review: bool         # a non-author review with real content
+    mentor_review: str | None = None  # GitHub login of the mentor who reviewed
+    url: str = ""
+    author: str = ""
+    head_sha: str = ""
+    ci: str = "none"                 # success | failure | pending | none
+    reviewers: tuple[str, ...] = ()
 
     @property
     def ready_to_deploy(self) -> bool:
@@ -97,6 +102,7 @@ class IncidentState:
     phase: str = "paged"
     status: str = "broken"
     rollback_at: float | None = None
+    fixed_at: float | None = None
     restart_at: float | None = None
     snoozed_at: float | None = None
     snoozes: int = 0
