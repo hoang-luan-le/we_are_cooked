@@ -4,9 +4,14 @@
 - **Trạng thái chung:** PAUSED
 - **Người điều phối:** Tung
 - **Repo điều phối:** `thanhtungnguyen-dev/we_are_cooked`
-- **Agent chỉnh file:** CODEX
+- **Agent chỉnh file:** RUNNER
 
-Tung đổi trạng thái chung thành `IN_PROGRESS` khi muốn bắt đầu. Chỉ một agent chỉnh file cho Tung tại một thời điểm. Agent khác có thể review trong chat. Trước khi chuyển quyền chỉnh file, xác nhận phiên cũ đã dừng, cập nhật writer, lane và Command-ID trên `main`. Dùng ID mới cho task mới hoặc yêu cầu sửa.
+Tung đổi trạng thái chung thành `IN_PROGRESS` và khởi động runner khi muốn bắt đầu. Runner chạy từng lane theo thứ tự. Chỉ một agent chỉnh file cho Tung tại một thời điểm. Khi hàng đợi hết, Tung kiểm bug, đọc báo cáo và quyết định có mở phase mới hay không. Dùng ID mới cho task mới hoặc yêu cầu sửa.
+
+## Hàng đợi tự động
+
+1. CODEX
+2. ARGON
 
 ## CODEX · GPT-6.1 Sol
 
@@ -15,7 +20,7 @@ Tung đổi trạng thái chung thành `IN_PROGRESS` khi muốn bắt đầu. Ch
 - **Status:** WORKING
 - **Command-ID:** `01-CODEX-01D-02`
 - **Task:** Kiểm tra code và contract hiện có trên GitHub. Dựng hoặc dùng lại nền Next.js tối thiểu cho luồng Night. Ưu tiên đường đi từ call screen đến dashboard, logs, deploy diff và rollback có recovery. Landing chỉ cần đường vào rõ ràng để kiểm tra luồng này. Chuẩn bị điểm nối captions và text cùng Luan theo hợp đồng đã xác nhận.
-- **Đầu vào:** Duy cung cấp API URL, demo incident ID, cách xác thực và ví dụ action. Đọc contract đã có nếu tìm được. Dùng dev fixture có nhãn khi thiếu đầu vào để làm phần UI. Giữ việc xác minh API thật là mục riêng.
+- **Đầu vào:** Duy cung cấp API URL, demo incident ID, cách xác thực và ví dụ action. Dùng contract voice hiện có trong `packages/contracts/dana.ts` và `packages/contracts/dana-voice.md` để xác định điểm nối. Dùng dev fixture có nhãn khi thiếu đầu vào để làm phần UI. Giữ việc xác minh API thật là mục riêng.
 - **Tiêu chí bàn giao:** Lệnh khởi động, build/typecheck và smoke test browser. Tách bằng chứng màn hình chạy bằng fixture khỏi kết quả test API thật. Khi có API, đi qua Answer, đọc thông tin incident, rollback thử trên incident được cấp và xác nhận charts phục hồi cùng trạng thái discounts OFF.
 - **Yêu cầu sửa từ PM:** Chưa có.
 
@@ -23,9 +28,10 @@ Tung đổi trạng thái chung thành `IN_PROGRESS` khi muốn bắt đầu. Ch
 
 - **Branch:** `branch-argon`
 - **Report:** `reports/argon.md`
-- **Status:** ON_HOLD
-- **Command-ID:** —
-- **Task:** Khi Tung nhờ, review trong chat về call screen, dashboard, chữ NIGHT PAIR / MORNING PAIR, handoff bốn mục và tương tác keyboard/mobile. Khi Tung chuyển writer và cấp lệnh mới, mới chỉnh design files.
+- **Status:** WORKING
+- **Command-ID:** `01-ARGON-REVIEW-01`
+- **Mode:** REPORT_ONLY
+- **Task:** Sau khi CODEX bàn giao, đọc luồng Night 2D đã triển khai, chỉ ra lỗi hoặc thiếu sót về UI, keyboard, mobile, empty/loading/error và cách phân biệt fixture với API thật. Xếp mức độ phát hiện, ghi bước tái hiện, đề xuất sửa và bằng chứng đã xem. Chỉ viết báo cáo của ARGON, giữ code app cho Tung duyệt.
 - **Yêu cầu sửa từ PM:** Chưa có.
 
 ## CLAUDE · Opus 5.5
